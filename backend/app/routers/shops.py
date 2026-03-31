@@ -50,3 +50,19 @@ def delete_shop(shop_id: int, db: Session = Depends(get_db), _=Depends(require_r
     db.delete(shop)
     db.commit()
     return {"detail": "Shop deleted"}
+
+
+from app.services.sync import sync_shop_orders, sync_shop_inventory
+
+
+@router.post("/{shop_id}/sync")
+def trigger_sync(shop_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin", "operator"))):
+    shop = db.query(Shop).filter(Shop.id == shop_id).first()
+    if not shop:
+        raise HTTPException(status_code=404, detail="Shop not found")
+    try:
+        sync_shop_orders(db, shop)
+        sync_shop_inventory(db, shop)
+        return {"detail": f"Sync completed for {shop.name}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")

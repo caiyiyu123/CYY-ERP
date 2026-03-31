@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -6,10 +7,19 @@ from app.config import UPLOAD_DIR
 from app.database import Base, engine
 import app.models  # noqa: F401
 from app.routers import auth, users, shops, products, sku_mappings, orders, inventory, finance, dashboard
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="WB-ERP", description="Wildberries 订单管理系统")
+
+@asynccontextmanager
+async def lifespan(app):
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="WB-ERP", description="Wildberries 订单管理系统", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
