@@ -2,7 +2,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.database import SessionLocal
 from app.models.shop import Shop
-from app.services.sync import sync_shop_orders, sync_shop_inventory
+from app.services.sync import sync_shop_orders, sync_shop_inventory, sync_shop_ads
 from app.config import SYNC_INTERVAL_MINUTES
 
 scheduler = BackgroundScheduler()
@@ -16,6 +16,7 @@ def sync_all_shops():
             try:
                 sync_shop_orders(db, shop)
                 sync_shop_inventory(db, shop)
+                sync_shop_ads(db, shop)
                 print(f"[Scheduler] Synced shop: {shop.name}")
             except Exception as e:
                 print(f"[Scheduler] Error syncing shop {shop.name}: {e}")
