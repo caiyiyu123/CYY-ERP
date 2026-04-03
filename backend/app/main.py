@@ -20,8 +20,7 @@ try:
     if db.query(User).count() == 0:
         admin = User(
             username="admin",
-            hashed_password=hash_password("admin123"),
-            real_name="管理员",
+            password_hash=hash_password("admin123"),
             role="admin",
             is_active=True,
         )
