@@ -70,8 +70,14 @@ def dashboard_stats(db: Session = Depends(get_db), accessible_shops: list[int] |
     days30_sales = float(days30_sales_q.scalar())
 
     # 近30天每日趋势（按莫斯科日期分组）
+    from sqlalchemy import cast, Date, text
+    from app.config import DATABASE_URL
+    if DATABASE_URL.startswith("postgresql"):
+        day_expr = cast(Order.created_at + text("interval '3 hours'"), Date).label('day')
+    else:
+        day_expr = func.date(Order.created_at, '+3 hours').label('day')
     daily_q = db.query(
-        func.date(Order.created_at, '+3 hours').label('day'),
+        day_expr,
         func.count(Order.id),
         func.coalesce(func.sum(Order.price_rub), 0),
     ).filter(
