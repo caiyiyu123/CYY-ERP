@@ -266,7 +266,7 @@ def ads_product_stats(
         product_q = product_q.filter(Order.shop_id.in_(accessible_shops))
     if shop_id:
         product_q = product_q.filter(Order.shop_id == shop_id)
-    product_q = product_q.group_by(OrderItem.wb_product_id)
+    product_q = product_q.group_by(OrderItem.wb_product_id, OrderItem.product_name, OrderItem.sku, OrderItem.image_url)
     all_products = product_q.all()
 
     # Build product info map: nm_id → {name, sku, image}
