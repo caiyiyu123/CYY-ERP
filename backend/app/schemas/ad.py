@@ -54,6 +54,9 @@ class AdOverview(BaseModel):
     total_orders: int = 0
     total_order_amount: float = 0.0
     roas: float = 0.0
+    overall_orders: int = 0
+    overall_order_amount: float = 0.0
+    overall_roas: float = 0.0
 
 
 class AdProductStats(BaseModel):
@@ -67,3 +70,6 @@ class AdProductStats(BaseModel):
     total_orders: int = 0
     total_order_amount: float = 0.0
     roas: float = 0.0
+    overall_orders: int = 0
+    overall_order_amount: float = 0.0
+    overall_roas: float = 0.0

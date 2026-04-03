@@ -25,3 +25,19 @@ def require_role(*roles: str):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         return current_user
     return role_checker
+
+
+def get_accessible_shop_ids(current_user: User = Depends(get_current_user)) -> list[int] | None:
+    """Return list of shop IDs the user can access, or None if admin (all shops)."""
+    if current_user.role == "admin":
+        return None  # admin 可访问所有店铺
+    return [s.id for s in current_user.shops]
+
+
+def require_module(module: str):
+    """Check if user has permission to access a module."""
+    def checker(current_user: User = Depends(get_current_user)) -> User:
+        if not current_user.has_permission(module):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"无权访问{module}模块")
+        return current_user
+    return checker

@@ -3,7 +3,7 @@
     <template #header>
       <div style="display: flex; justify-content: space-between; align-items: center">
         <span>店铺管理</span>
-        <el-button type="primary" @click="openDialog()">添加店铺</el-button>
+        <el-button v-if="isAdmin" type="primary" @click="openDialog()">添加店铺</el-button>
       </div>
     </template>
     <el-table :data="shops" stripe>
@@ -18,13 +18,15 @@
           <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? '启用' : '禁用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="last_sync_at" label="最后同步" />
+      <el-table-column label="最后同步">
+        <template #default="{ row }">{{ formatTime(row.last_sync_at) }}</template>
+      </el-table-column>
       <el-table-column label="操作" width="320">
         <template #default="{ row }">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" type="success" @click="$router.push(`/shops/${row.id}/sku-mappings`)">SKU关联</el-button>
           <el-button size="small" type="warning" :loading="syncing === row.id" @click="syncShop(row.id)">同步</el-button>
-          <el-popconfirm title="确定删除?" @confirm="deleteShop(row.id)">
+          <el-popconfirm v-if="isAdmin" title="确定删除该店铺？此操作不可恢复！" confirm-button-text="确认删除" cancel-button-text="取消" confirm-button-type="danger" @confirm="deleteShop(row.id)">
             <template #reference>
               <el-button size="small" type="danger">删除</el-button>
             </template>
@@ -53,15 +55,25 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useAuthStore } from '../stores/auth'
 import api from '../api'
+
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const shops = ref([])
 const showDialog = ref(false)
 const syncing = ref(null)
 const defaultForm = { id: null, name: '', type: 'local', api_token: '' }
 const form = reactive({ ...defaultForm })
+
+function formatTime(dt) {
+  if (!dt) return '-'
+  const utcDt = String(dt).endsWith('Z') ? dt : dt + 'Z'
+  return new Date(utcDt).toLocaleString('zh-CN', { timeZone: 'Europe/Moscow' })
+}
 
 async function fetchShops() {
   const { data } = await api.get('/api/shops')
@@ -97,14 +109,31 @@ async function deleteShop(id) {
 }
 
 async function syncShop(id) {
+  if (syncing.value === id) return
   syncing.value = id
   try {
     await api.post(`/api/shops/${id}/sync`)
-    ElMessage.success('同步完成')
-    fetchShops()
+    // Poll for completion
+    const poll = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/api/shops/${id}/sync-status`)
+        if (data.status === 'done') {
+          clearInterval(poll)
+          syncing.value = null
+          ElMessage.success('同步完成')
+          fetchShops()
+        } else if (data.status === 'error') {
+          clearInterval(poll)
+          syncing.value = null
+          ElMessage.error(`同步失败: ${data.detail}`)
+        }
+      } catch {
+        clearInterval(poll)
+        syncing.value = null
+      }
+    }, 3000)
   } catch {
-    ElMessage.error('同步失败')
-  } finally {
+    ElMessage.error('同步请求失败')
     syncing.value = null
   }
 }

@@ -11,6 +11,8 @@ class UserOut(BaseModel):
     username: str
     role: str
     is_active: bool
+    shop_ids: list[int] = []
+    permissions: list[str] = []
 
     class Config:
         from_attributes = True

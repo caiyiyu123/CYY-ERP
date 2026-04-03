@@ -14,9 +14,9 @@ def sync_all_shops():
         shops = db.query(Shop).filter(Shop.is_active == True).all()
         for shop in shops:
             try:
-                sync_shop_orders(db, shop)
+                cards = sync_shop_orders(db, shop)
                 sync_shop_inventory(db, shop)
-                sync_shop_ads(db, shop)
+                sync_shop_ads(db, shop, cards=cards)
                 print(f"[Scheduler] Synced shop: {shop.name}")
             except Exception as e:
                 print(f"[Scheduler] Error syncing shop {shop.name}: {e}")

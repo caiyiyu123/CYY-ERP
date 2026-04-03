@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.order import Order, OrderItem
 from app.models.product import SkuMapping, Product
-from app.utils.deps import get_current_user
+from app.utils.deps import get_current_user, get_accessible_shop_ids, require_module
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
 
@@ -16,9 +16,12 @@ def finance_summary(
     shop_id: Optional[int] = Query(None),
     order_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    accessible_shops: list[int] | None = Depends(get_accessible_shop_ids),
+    _=Depends(require_module("finance")),
 ):
     query = db.query(OrderItem).join(Order)
+    if accessible_shops is not None:
+        query = query.filter(Order.shop_id.in_(accessible_shops))
     if shop_id:
         query = query.filter(Order.shop_id == shop_id)
     if order_type:

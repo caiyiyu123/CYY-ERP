@@ -35,6 +35,7 @@ class OrderOut(BaseModel):
     order_type: str
     status: str
     total_price: float
+    price_rub: float = 0.0
     currency: str
     customer_name: str
     warehouse_name: str

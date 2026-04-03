@@ -163,7 +163,7 @@ def fetch_cards(api_token: str) -> list[dict]:
     cursor = {"limit": 100}
 
     try:
-        with httpx.Client(timeout=30) as client:
+        with httpx.Client(timeout=60) as client:
             while True:
                 _throttle()
                 body = {"settings": {"cursor": cursor, "filter": {"withPhoto": -1}}}
@@ -239,8 +239,8 @@ def fetch_statistics_sales(api_token: str, date_from: Optional[datetime] = None)
         return []
 
 
-def fetch_ad_campaign_ids(api_token: str) -> list[int]:
-    """GET /adv/v1/promotion/count — get all campaign IDs across all statuses."""
+def fetch_ad_campaign_ids(api_token: str) -> list[dict]:
+    """GET /adv/v1/promotion/count — get all campaign IDs with type/status."""
     url = f"{ADVERT_API}/adv/v1/promotion/count"
     try:
         _throttle()
@@ -248,59 +248,127 @@ def fetch_ad_campaign_ids(api_token: str) -> list[int]:
             resp = client.get(url, headers=_headers(api_token))
             resp.raise_for_status()
             data = resp.json()
-            all_ids = []
+            results = []
             for group in data.get("adverts", []):
+                group_type = group.get("type", 0)
+                group_status = group.get("status", 0)
                 for item in group.get("advert_list", []):
                     advert_id = item.get("advertId")
                     if advert_id:
-                        all_ids.append(advert_id)
-            return all_ids
+                        results.append({
+                            "advertId": advert_id,
+                            "type": group_type,
+                            "status": group_status,
+                            "changeTime": item.get("changeTime", ""),
+                        })
+            return results
     except Exception as e:
         print(f"[WB API] Error fetching ad campaign IDs: {e}")
         return []
 
 
 def fetch_ad_details(api_token: str, advert_ids: list[int]) -> list[dict]:
-    """POST /adv/v1/promotion/adverts — batch fetch campaign details."""
+    """GET /api/advert/v2/adverts — batch fetch campaign details."""
     if not advert_ids:
         return []
-    url = f"{ADVERT_API}/adv/v1/promotion/adverts"
+    url = f"{ADVERT_API}/api/advert/v2/adverts"
     all_details = []
     try:
         with httpx.Client(timeout=30) as client:
             for i in range(0, len(advert_ids), 50):
                 batch = advert_ids[i:i + 50]
                 _throttle()
-                resp = client.post(url, headers=_headers(api_token), json=batch)
+                resp = client.get(url, headers=_headers(api_token),
+                                  params={"ids": ",".join(str(x) for x in batch)})
                 resp.raise_for_status()
                 data = resp.json()
-                if isinstance(data, list):
-                    all_details.extend(data)
+                adverts = data.get("adverts", []) if isinstance(data, dict) else data
+                if isinstance(adverts, list):
+                    all_details.extend(adverts)
     except Exception as e:
         print(f"[WB API] Error fetching ad details: {e}")
     return all_details
 
 
 def fetch_ad_fullstats(api_token: str, campaign_ids: list[int], date_from: str, date_to: str) -> list[dict]:
-    """POST /adv/v2/fullstats — fetch daily stats per campaign per nmId."""
+    """GET /adv/v3/fullstats — fetch daily stats per campaign per nmId."""
     if not campaign_ids:
         return []
-    url = f"{ADVERT_API}/adv/v2/fullstats"
+    url = f"{ADVERT_API}/adv/v3/fullstats"
     all_stats = []
     try:
         with httpx.Client(timeout=60) as client:
             for i in range(0, len(campaign_ids), 100):
                 batch = campaign_ids[i:i + 100]
-                payload = [
-                    {"id": cid, "interval": {"begin": date_from, "end": date_to}}
-                    for cid in batch
-                ]
                 _throttle()
-                resp = client.post(url, headers=_headers(api_token), json=payload)
+                resp = client.get(url, headers=_headers(api_token),
+                                  params={
+                                      "ids": ",".join(str(x) for x in batch),
+                                      "beginDate": date_from,
+                                      "endDate": date_to,
+                                  })
                 resp.raise_for_status()
                 data = resp.json()
                 if isinstance(data, list):
                     all_stats.extend(data)
+                elif isinstance(data, dict) and "advertId" in data:
+                    all_stats.append(data)
     except Exception as e:
         print(f"[WB API] Error fetching ad fullstats: {e}")
     return all_stats
+
+
+def fetch_ad_budget(api_token: str, advert_id: int) -> dict:
+    """GET /adv/v1/budget — get campaign budget info.
+
+    Returns: {cash, netting, total, currency}
+    total > 0 means campaign is funded (active or paused with budget).
+    total = 0 means campaign has no budget (likely archived).
+    """
+    url = f"{ADVERT_API}/adv/v1/budget"
+    try:
+        _throttle()
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(url, headers=_headers(api_token), params={"id": advert_id})
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        print(f"[WB API] Error fetching budget for campaign {advert_id}: {e}")
+        return {}
+
+
+def fetch_ad_budgets_batch(api_token: str, advert_ids: list[int]) -> dict[int, dict]:
+    """Fetch budgets for multiple campaigns. Returns {advert_id: budget_info}."""
+    result = {}
+    for aid in advert_ids:
+        budget = fetch_ad_budget(api_token, aid)
+        if budget:
+            result[aid] = budget
+    return result
+
+
+def fetch_ad_campaign_names(api_token: str) -> dict[int, str]:
+    """GET /adv/v1/upd — get campaign display names from costs history."""
+    url = f"{ADVERT_API}/adv/v1/upd"
+    try:
+        _throttle()
+        with httpx.Client(timeout=30) as client:
+            from datetime import datetime, timedelta
+            today = datetime.now()
+            date_from = (today - timedelta(days=30)).strftime("%Y-%m-%d")
+            date_to = today.strftime("%Y-%m-%d")
+            resp = client.get(url, headers=_headers(api_token),
+                              params={"from": date_from, "to": date_to})
+            resp.raise_for_status()
+            data = resp.json()
+            names = {}
+            if isinstance(data, list):
+                for item in data:
+                    cid = item.get("campId") or item.get("advertId")
+                    name = item.get("campName") or item.get("name")
+                    if cid and name and cid not in names:
+                        names[cid] = name
+            return names
+    except Exception as e:
+        print(f"[WB API] Error fetching ad campaign names: {e}")
+        return {}

@@ -34,7 +34,7 @@
       <template #header>状态时间线</template>
       <el-timeline>
         <el-timeline-item v-for="log in order.status_logs" :key="log.id" :timestamp="log.changed_at">
-          {{ log.status }} <span v-if="log.note" style="color: #999">— {{ log.note }}</span>
+          {{ log.status }} <span v-if="log.note" style="color: var(--ts-text-muted)">— {{ log.note }}</span>
         </el-timeline-item>
       </el-timeline>
     </el-card>

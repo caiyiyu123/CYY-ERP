@@ -24,4 +24,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
+        "shop_ids": [s.id for s in current_user.shops],
+        "permissions": current_user.permissions.split(",") if current_user.permissions else [],
+    }

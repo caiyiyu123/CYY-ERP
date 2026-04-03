@@ -16,6 +16,7 @@ class Order(Base):
     order_type: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(50), default="pending")
     total_price: Mapped[float] = mapped_column(Float, default=0.0)
+    price_rub: Mapped[float] = mapped_column(Float, default=0.0)
     currency: Mapped[str] = mapped_column(String(10), default="RUB")
     customer_name: Mapped[str] = mapped_column(String(200), default="")
     delivery_address: Mapped[str] = mapped_column(Text, default="")

@@ -1,13 +1,16 @@
 from typing import Literal, Optional
+from datetime import datetime
 from pydantic import BaseModel
 
-RoleType = Literal["admin", "operator", "viewer"]
+RoleType = Literal["admin", "operator"]
 
 
 class UserCreate(BaseModel):
     username: str
     password: str
-    role: RoleType = "viewer"
+    role: RoleType = "operator"
+    shop_ids: list[int] = []
+    permissions: list[str] = []
 
 
 class UserUpdate(BaseModel):
@@ -15,3 +18,18 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     role: Optional[RoleType] = None
     is_active: Optional[bool] = None
+    shop_ids: Optional[list[int]] = None
+    permissions: Optional[list[str]] = None
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    shop_ids: list[int] = []
+    permissions: list[str] = []
+
+    class Config:
+        from_attributes = True

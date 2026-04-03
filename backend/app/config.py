@@ -9,9 +9,17 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
 
 FERNET_KEY = os.environ.get("WB_ERP_FERNET_KEY", "wb-erp-fernet-key-must-be-32-bytes=")
 
-DATABASE_URL = f"sqlite:///{BASE_DIR / 'wb_erp.db'}"
+# Database: use DATABASE_URL env var (Railway provides this for PostgreSQL)
+# Falls back to local SQLite for development
+DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'wb_erp.db'}")
+# Railway PostgreSQL uses "postgres://" but SQLAlchemy needs "postgresql://"
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 UPLOAD_DIR = BASE_DIR / "app" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 SYNC_INTERVAL_MINUTES = 30
+
+# CORS: allowed origins from env (comma-separated) or default to localhost
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")

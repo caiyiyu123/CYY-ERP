@@ -7,13 +7,13 @@ from app.config import UPLOAD_DIR
 from app.database import get_db
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductUpdate, ProductOut
-from app.utils.deps import get_current_user, require_role
+from app.utils.deps import get_current_user, require_role, require_module
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
 
 @router.get("", response_model=list[ProductOut])
-def list_products(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_products(db: Session = Depends(get_db), _=Depends(require_module("products"))):
     return db.query(Product).all()
 
 

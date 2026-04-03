@@ -2,7 +2,7 @@
   <div>
     <el-page-header @back="$router.push('/ads')" style="margin-bottom: 20px">
       <template #content>
-        <span style="font-size: 18px; font-weight: bold">{{ campaign.name || '广告活动详情' }}</span>
+        <span style="font-size: 18px; font-weight: bold; color: var(--ts-text-heading)">{{ campaign.name || '广告活动详情' }}</span>
         <el-tag :type="typeTagType(campaign.type)" size="small" style="margin-left: 10px">{{ typeLabel(campaign.type) }}</el-tag>
         <span :style="{ color: statusColor(campaign.status), fontWeight: 'bold', marginLeft: '10px' }">{{ statusLabel(campaign.status) }}</span>
       </template>
@@ -20,8 +20,8 @@
     <el-row :gutter="16" style="margin-bottom: 20px">
       <el-col :span="4" v-for="kpi in kpis" :key="kpi.label">
         <el-card shadow="hover">
-          <div style="color: #999; font-size: 12px">{{ kpi.label }}</div>
-          <div :style="{ fontSize: '20px', fontWeight: 'bold', marginTop: '4px', color: kpi.color || '' }">
+          <div class="ts-stat-label">{{ kpi.label }}</div>
+          <div :style="{ fontSize: '20px', fontWeight: 'bold', marginTop: '4px', color: kpi.color || 'var(--ts-text-heading)' }">
             {{ kpi.prefix }}{{ kpi.value?.toLocaleString() }}
           </div>
         </el-card>
@@ -53,7 +53,7 @@
         </el-table-column>
         <el-table-column prop="roas" label="ROAS" min-width="80">
           <template #default="{ row }">
-            <span :style="{ color: row.roas >= 2 ? '#67c23a' : row.roas >= 1 ? '#e6a23c' : '#f56c6c', fontWeight: 'bold' }">
+            <span :style="{ color: row.roas >= 2 ? '#22c55e' : row.roas >= 1 ? '#f59e0b' : '#ef4444', fontWeight: 'bold' }">
               {{ row.roas }}
             </span>
           </template>
@@ -117,7 +117,7 @@ function onDateChange(val) {
 const TYPE_MAP = { 5: '自动', 6: '搜索', 7: '卡片', 8: '推荐', 9: '搜索+推荐' }
 const TYPE_TAG = { 5: 'success', 6: '', 7: 'warning', 8: '', 9: 'info' }
 const STATUS_MAP = { 4: '准备中', 7: '进行中', 8: '审核中', 9: '已暂停', 11: '已结束' }
-const STATUS_COLOR = { 4: '#909399', 7: '#67c23a', 8: '#e6a23c', 9: '#909399', 11: '#606266' }
+const STATUS_COLOR = { 4: '#64748b', 7: '#22c55e', 8: '#f59e0b', 9: '#64748b', 11: '#64748b' }
 
 function typeLabel(t) { return TYPE_MAP[t] || t }
 function typeTagType(t) { return TYPE_TAG[t] || '' }
@@ -139,9 +139,9 @@ const kpis = computed(() => [
   { label: '花费', value: totals.value.spend, prefix: '¥ ' },
   { label: '展示', value: totals.value.views, prefix: '' },
   { label: '点击', value: totals.value.clicks, prefix: '' },
-  { label: 'CTR', value: totals.value.ctr, prefix: '', color: '#409eff' },
+  { label: 'CTR', value: totals.value.ctr, prefix: '', color: '#3b82f6' },
   { label: '订单', value: totals.value.orders, prefix: '' },
-  { label: 'ROAS', value: totals.value.roas, prefix: '', color: '#67c23a' },
+  { label: 'ROAS', value: totals.value.roas, prefix: '', color: '#22c55e' },
 ])
 
 const productAgg = computed(() => {
@@ -170,14 +170,29 @@ const chartOption = computed(() => {
   }
   const dates = Object.keys(byDate).sort()
   return {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['花费', '订单金额'] },
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#ffffff',
+      borderColor: '#e5e7eb',
+      textStyle: { color: '#1e293b', fontFamily: 'Plus Jakarta Sans' },
+    },
+    legend: { data: ['花费', '订单金额'], textStyle: { color: '#64748b' } },
     grid: { left: 50, right: 30, bottom: 30, top: 40 },
-    xAxis: { type: 'category', data: dates },
-    yAxis: { type: 'value' },
+    xAxis: {
+      type: 'category', data: dates,
+      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLabel: { color: '#94a3b8' },
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: '#f1f5f9' } },
+      axisLabel: { color: '#94a3b8' },
+    },
     series: [
-      { name: '花费', type: 'bar', data: dates.map(d => byDate[d].spend.toFixed(2)), itemStyle: { color: '#409eff' } },
-      { name: '订单金额', type: 'line', data: dates.map(d => byDate[d].order_amount.toFixed(2)), itemStyle: { color: '#67c23a' } },
+      { name: '花费', type: 'bar', data: dates.map(d => byDate[d].spend.toFixed(2)), itemStyle: { color: '#3b82f6' } },
+      { name: '订单金额', type: 'line', data: dates.map(d => byDate[d].order_amount.toFixed(2)), itemStyle: { color: '#f59e0b' }, smooth: true },
     ],
   }
 })
