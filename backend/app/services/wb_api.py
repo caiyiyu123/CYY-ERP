@@ -242,6 +242,41 @@ def fetch_statistics_sales(api_token: str, date_from: Optional[datetime] = None)
         return []
 
 
+def fetch_report_detail(api_token: str, date_from: str, date_to: str) -> list[dict]:
+    """GET /api/v5/supplier/reportDetailByPeriod — fetch detailed sales report.
+
+    Uses cursor-based pagination via rrdid parameter.
+
+    Args:
+        date_from: Start date in YYYY-MM-DD format
+        date_to: End date in YYYY-MM-DD format
+    """
+    url = f"{STATISTICS_API}/api/v5/supplier/reportDetailByPeriod"
+    all_records = []
+    rrdid = 0
+
+    try:
+        with httpx.Client(timeout=120) as client:
+            while True:
+                params = {"dateFrom": date_from, "dateTo": date_to, "rrdid": rrdid}
+                _throttle()
+                resp = client.get(url, headers=_headers(api_token), params=params)
+                if resp.status_code == 204 or not resp.content:
+                    break  # No more data
+                resp.raise_for_status()
+                data = resp.json()
+                if not isinstance(data, list) or not data:
+                    break
+                all_records.extend(data)
+                rrdid = data[-1].get("rrd_id", 0)
+                if not rrdid:
+                    break
+    except Exception as e:
+        print(f"[WB API] Error fetching report detail: {e}")
+
+    return all_records
+
+
 def fetch_ad_campaign_ids(api_token: str) -> list[dict]:
     """GET /adv/v1/promotion/count — get all campaign IDs with type/status."""
     url = f"{ADVERT_API}/adv/v1/promotion/count"

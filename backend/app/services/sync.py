@@ -10,7 +10,7 @@ from app.utils.security import decrypt_token
 from app.services.wb_api import (
     fetch_new_orders, fetch_orders, fetch_order_statuses,
     fetch_warehouses, fetch_stocks, fetch_cards,
-    fetch_statistics_orders,
+    fetch_statistics_orders, fetch_report_detail,
     fetch_ad_campaign_ids, fetch_ad_details, fetch_ad_fullstats,
     fetch_ad_campaign_names, fetch_ad_budgets_batch,
 )
@@ -279,7 +279,12 @@ def sync_shop_orders(db: Session, shop: Shop) -> list[dict]:
                 if image_url and not existing_mapping.wb_image_url:
                     existing_mapping.wb_image_url = image_url
 
-    # Step 5: Update statuses for all non-terminal orders (not just current batch)
+    # Step 5: Fetch FBW/FBO orders from Statistics API
+    # The Marketplace API (/api/v3/orders) only returns FBS orders.
+    # FBW (FBO) orders must be fetched from the Statistics API.
+    _sync_fbo_orders(db, shop, api_token, nm_card_map)
+
+    # Step 6: Update statuses for all non-terminal orders (not just current batch)
     terminal_statuses = ("completed", "cancelled", "returned", "rejected")
     active_orders = db.query(Order).filter(
         Order.shop_id == shop.id,
@@ -289,15 +294,216 @@ def sync_shop_orders(db: Session, shop: Shop) -> list[dict]:
     if active_wb_ids:
         _update_order_statuses(db, shop.id, api_token, active_wb_ids)
 
-    # Step 6: Backfill prices for orders with price=0 using Statistics API
+    # Step 7: Backfill prices for orders with price=0 using Statistics API
     _backfill_order_prices(db, shop.id, api_token)
 
-    # Step 7: Update RUB prices for all orders
+    # Step 8: Update RUB prices for all orders
     _update_order_rub_prices(db, shop.id, api_token)
 
     shop.last_sync_at = datetime.now(timezone.utc)
     db.commit()
     return cards
+
+
+def _sync_fbo_orders(db: Session, shop: Shop, api_token: str, nm_card_map: dict):
+    """Sync FBW/FBO orders using two data sources:
+
+    1. Statistics Orders API — has warehouseType to reliably identify FBW orders.
+       Limited to ~140 recent records but provides definitive FBS/FBW classification.
+    2. Report Detail API — comprehensive settled order data.
+       Contains both FBS and FBW without a direct type field.
+       We exclude FBS orders by matching against existing Marketplace FBS orders
+       using (nmId, order_date) combinations.
+    """
+    all_fbo_records = []  # list of normalized dicts
+    seen_srids = set()
+
+    # Source 1: Statistics Orders API — reliable FBW identification
+    stat_orders = fetch_statistics_orders(api_token)
+    stat_fbo_srids = set()
+    for o in stat_orders:
+        if "WB" not in o.get("warehouseType", ""):
+            continue
+        srid = o.get("srid", "")
+        if not srid or srid in seen_srids:
+            continue
+        seen_srids.add(srid)
+        stat_fbo_srids.add(srid)
+        all_fbo_records.append({
+            "srid": srid,
+            "order_dt": o.get("date", ""),
+            "sale_dt": "",
+            "nm_id": o.get("nmId", 0),
+            "article": o.get("supplierArticle", ""),
+            "barcode": o.get("barcode", ""),
+            "product_name": o.get("subject", ""),
+            "price": float(o.get("priceWithDisc", 0) or o.get("finishedPrice", 0) or 0),
+            "warehouse": o.get("warehouseName", ""),
+            "is_cancel": o.get("isCancel", False),
+            "source": "statistics",
+        })
+
+    # Source 2: Report Detail API — settled historical orders
+    fbw_count = db.query(Order).filter(
+        Order.shop_id == shop.id, Order.order_type == "FBW"
+    ).count()
+
+    if fbw_count == 0:
+        sync_from = datetime.now(timezone.utc) - timedelta(days=14)
+    elif shop.last_sync_at:
+        sync_from = shop.last_sync_at - timedelta(days=7)
+    else:
+        sync_from = datetime.now(timezone.utc) - timedelta(days=14)
+
+    date_from = sync_from.strftime("%Y-%m-%d")
+    date_to = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    report_data = fetch_report_detail(api_token, date_from, date_to)
+
+    # Build a set of (nmId, order_date) from existing FBS orders to exclude
+    # FBS orders imported via Marketplace API. This prevents the Report Detail API
+    # from re-importing FBS orders as FBW.
+    fbs_orders = db.query(Order).filter(
+        Order.shop_id == shop.id, Order.order_type == "FBS"
+    ).all()
+    fbs_fingerprints = set()
+    for o in fbs_orders:
+        for item in o.items:
+            if item.wb_product_id and o.created_at:
+                fbs_fingerprints.add((item.wb_product_id, o.created_at.strftime("%Y-%m-%d")))
+
+    for r in report_data:
+        srid = r.get("srid", "")
+        qty = r.get("quantity", 0)
+        if not srid or qty <= 0 or srid in seen_srids:
+            continue
+
+        nm_id = r.get("nm_id", 0)
+        order_dt = r.get("order_dt", "")[:10]
+
+        # Skip if this looks like an FBS order (matches existing FBS fingerprint)
+        if nm_id and order_dt and (str(nm_id), order_dt) in fbs_fingerprints:
+            continue
+
+        seen_srids.add(srid)
+        all_fbo_records.append({
+            "srid": srid,
+            "order_dt": r.get("order_dt", ""),
+            "sale_dt": r.get("sale_dt", ""),
+            "nm_id": nm_id,
+            "article": r.get("sa_name", ""),
+            "barcode": r.get("barcode", ""),
+            "product_name": r.get("subject_name", ""),
+            "price": float(r.get("retail_price_withdisc_rub", 0) or 0),
+            "warehouse": r.get("office_name", ""),
+            "is_cancel": False,
+            "source": "report",
+        })
+
+    if not all_fbo_records:
+        return
+
+    # Build SKU/barcode → image lookup from existing OrderItems for fallback
+    sku_img_map = {}
+    barcode_img_map = {}
+    img_items = db.query(OrderItem.sku, OrderItem.barcode, OrderItem.image_url).filter(
+        OrderItem.image_url != ""
+    ).distinct().all()
+    for sku_val, bc_val, img_val in img_items:
+        if sku_val and sku_val not in sku_img_map:
+            sku_img_map[sku_val] = img_val
+        if bc_val and bc_val not in barcode_img_map:
+            barcode_img_map[bc_val] = img_val
+
+    # Also from SkuMappings
+    mappings = db.query(SkuMapping).filter(SkuMapping.wb_image_url != "").all()
+    for m in mappings:
+        if m.shop_sku and m.shop_sku not in sku_img_map:
+            sku_img_map[m.shop_sku] = m.wb_image_url
+        if m.wb_barcode and m.wb_barcode not in barcode_img_map:
+            barcode_img_map[m.wb_barcode] = m.wb_image_url
+
+    created = 0
+    for rec in all_fbo_records:
+        srid = rec["srid"]
+        wb_order_id = f"fbo_{srid}"
+
+        existing = db.query(Order).filter(Order.wb_order_id == wb_order_id).first()
+        if existing:
+            if existing.total_price == 0 and rec["price"] > 0:
+                existing.total_price = rec["price"]
+                existing.price_rub = rec["price"]
+                existing.updated_at = datetime.now(timezone.utc)
+            continue
+
+        # Parse order date
+        order_created = None
+        date_str = rec["order_dt"]
+        if date_str:
+            try:
+                order_created = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                pass
+
+        status = "cancelled" if rec["is_cancel"] else ("completed" if rec["sale_dt"] else "pending")
+        price = rec["price"]
+        nm_id = rec["nm_id"]
+        article = rec["article"]
+        barcode = rec["barcode"]
+        card_info = nm_card_map.get(nm_id, {})
+        product_name = rec["product_name"] or card_info.get("name", article)
+        sku = article or card_info.get("vendorCode", "") or barcode
+        photos = card_info.get("photos", [])
+        image_url = photos[0].get("c246x328", "") if photos else ""
+
+        # Fallback: look up image from existing items by SKU or barcode
+        if not image_url:
+            image_url = sku_img_map.get(sku, "") or barcode_img_map.get(barcode, "")
+
+        order = Order(
+            wb_order_id=wb_order_id,
+            shop_id=shop.id,
+            order_type="FBW",
+            status=status,
+            total_price=price,
+            price_rub=price,
+            currency="RUB",
+            warehouse_name=rec["warehouse"],
+            created_at=order_created or datetime.now(timezone.utc),
+        )
+        db.add(order)
+        db.flush()
+
+        db.add(OrderStatusLog(
+            order_id=order.id, status=status,
+            wb_status=f"fbo_{rec['source']}",
+        ))
+
+        db.add(OrderItem(
+            order_id=order.id,
+            wb_product_id=str(nm_id),
+            product_name=product_name,
+            sku=sku, barcode=barcode,
+            image_url=image_url,
+            quantity=1, price=price,
+        ))
+
+        if sku:
+            existing_mapping = db.query(SkuMapping).filter(
+                SkuMapping.shop_id == shop.id, SkuMapping.shop_sku == sku
+            ).first()
+            if not existing_mapping:
+                db.add(SkuMapping(
+                    shop_id=shop.id, shop_sku=sku,
+                    wb_nm_id=str(nm_id) if nm_id else None,
+                    wb_product_name=product_name, wb_image_url=image_url,
+                    wb_barcode=barcode,
+                ))
+
+        created += 1
+
+    if created:
+        print(f"[Sync] Created {created} FBO/FBW orders for shop {shop.id}")
 
 
 def _update_order_statuses(db: Session, shop_id: int, api_token: str, wb_order_ids: list[int]):
