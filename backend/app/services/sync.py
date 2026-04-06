@@ -360,17 +360,10 @@ def _sync_fbo_orders(db: Session, shop: Shop, api_token: str, nm_card_map: dict)
 
     report_data = fetch_report_detail(api_token, date_from, date_to)
 
-    # Build a set of (nmId, order_date) from existing FBS orders to exclude
-    # FBS orders imported via Marketplace API. This prevents the Report Detail API
-    # from re-importing FBS orders as FBW.
-    fbs_orders = db.query(Order).filter(
-        Order.shop_id == shop.id, Order.order_type == "FBS"
-    ).all()
-    fbs_fingerprints = set()
-    for o in fbs_orders:
-        for item in o.items:
-            if item.wb_product_id and o.created_at:
-                fbs_fingerprints.add((item.wb_product_id, o.created_at.strftime("%Y-%m-%d")))
+    # Report Detail API contains both FBS and FBW records, but each has a unique srid.
+    # We use fbo_{srid} as wb_order_id which never collides with Marketplace FBS IDs
+    # (which are plain numbers). So no deduplication against FBS is needed —
+    # the unique wb_order_id check in the insert loop handles it.
 
     for r in report_data:
         srid = r.get("srid", "")
@@ -382,13 +375,6 @@ def _sync_fbo_orders(db: Session, shop: Shop, api_token: str, nm_card_map: dict)
         # Skip fee/logistics records: they have quantity>0 but price=0
         # Real sales have retail_price_withdisc_rub > 0
         if price_rub <= 0:
-            continue
-
-        nm_id = r.get("nm_id", 0)
-        order_dt = r.get("order_dt", "")[:10]
-
-        # Skip if this looks like an FBS order (matches existing FBS fingerprint)
-        if nm_id and order_dt and (str(nm_id), order_dt) in fbs_fingerprints:
             continue
 
         seen_srids.add(srid)
