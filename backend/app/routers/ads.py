@@ -1,18 +1,65 @@
+import threading
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models.ad import AdCampaign, AdDailyStat
 from app.models.order import Order, OrderItem
+from app.models.shop import Shop
 from app.schemas.ad import (
     AdOverview, AdCampaignWithStats, AdDailyStatOut, AdProductStats,
 )
-from app.utils.deps import get_current_user, get_accessible_shop_ids, require_module
+from app.utils.deps import get_current_user, get_accessible_shop_ids, require_module, require_role
 
 router = APIRouter(prefix="/api/ads", tags=["ads"])
+
+_ad_sync_status = {"status": "idle"}
+_ad_sync_lock = threading.Lock()
+
+
+def _run_ad_sync():
+    db = SessionLocal()
+    try:
+        from app.services.sync import sync_shop_ads
+        from app.services.wb_api import fetch_cards
+        from app.utils.security import decrypt_token
+        shops = db.query(Shop).filter(Shop.is_active == True).all()
+        synced = 0
+        for shop in shops:
+            api_token = decrypt_token(shop.api_token)
+            cards = fetch_cards(api_token)
+            sync_shop_ads(db, shop, cards=cards)
+            synced += 1
+        with _ad_sync_lock:
+            _ad_sync_status["status"] = "done"
+            _ad_sync_status["detail"] = f"已同步 {synced}/{len(shops)} 个店铺的广告"
+    except Exception as e:
+        with _ad_sync_lock:
+            _ad_sync_status["status"] = "error"
+            _ad_sync_status["detail"] = str(e)
+    finally:
+        db.close()
+
+
+@router.post("/sync")
+def trigger_ad_sync(_=Depends(require_role("admin", "operator"))):
+    with _ad_sync_lock:
+        if _ad_sync_status["status"] == "running":
+            return {"detail": "广告同步正在进行中"}
+        _ad_sync_status["status"] = "running"
+        _ad_sync_status["detail"] = ""
+    thread = threading.Thread(target=_run_ad_sync, daemon=True)
+    thread.start()
+    return {"detail": "广告同步已开始"}
+
+
+@router.get("/sync/status")
+def ad_sync_status(_=Depends(require_role("admin", "operator"))):
+    with _ad_sync_lock:
+        return dict(_ad_sync_status)
 
 
 def _default_dates(date_from: Optional[date], date_to: Optional[date]):

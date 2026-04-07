@@ -13,6 +13,9 @@
           start-placeholder="开始日期" end-placeholder="结束日期" size="small"
           value-format="YYYY-MM-DD" @change="onDateChange" />
       </div>
+      <el-button type="primary" size="small" :loading="adSyncing" @click="syncAds">
+        {{ adSyncing ? '同步中...' : '同步广告' }}
+      </el-button>
     </div>
 
     <!-- KPI 卡片 -->
@@ -176,7 +179,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -219,6 +222,44 @@ async function onProductExpand(row, expandedRows) {
   }
   row._campaignsLoading = false
 }
+const adSyncing = ref(false)
+let adSyncPollTimer = null
+
+async function syncAds() {
+  adSyncing.value = true
+  try {
+    await api.post('/api/ads/sync')
+    let polls = 0
+    adSyncPollTimer = setInterval(async () => {
+      if (++polls > 60) {
+        clearInterval(adSyncPollTimer)
+        adSyncPollTimer = null
+        adSyncing.value = false
+        ElMessage.warning('同步超时，请稍后重试')
+        return
+      }
+      try {
+        const { data } = await api.get('/api/ads/sync/status')
+        if (data.status === 'done') {
+          clearInterval(adSyncPollTimer)
+          adSyncPollTimer = null
+          adSyncing.value = false
+          ElMessage.success(data.detail || '广告同步完成')
+          fetchAll()
+        } else if (data.status === 'error') {
+          clearInterval(adSyncPollTimer)
+          adSyncPollTimer = null
+          adSyncing.value = false
+          ElMessage.error('同步失败: ' + (data.detail || '未知错误'))
+        }
+      } catch {}
+    }, 2000)
+  } catch {
+    adSyncing.value = false
+    ElMessage.error('同步请求失败')
+  }
+}
+
 const shops = ref([])
 const shopId = ref(null)
 const dateRange = ref(null)
@@ -364,5 +405,12 @@ onMounted(async () => {
     shops.value = data
   } catch (e) { /* ignore */ }
   fetchAll()
+})
+
+onBeforeUnmount(() => {
+  if (adSyncPollTimer) {
+    clearInterval(adSyncPollTimer)
+    adSyncPollTimer = null
+  }
 })
 </script>
