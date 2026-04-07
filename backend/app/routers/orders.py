@@ -129,14 +129,54 @@ def get_order(order_id: int, db: Session = Depends(get_db), accessible_shops: li
     return order
 
 
-# --- 临时接口：清空 FBW 订单数据（用完后删除） ---
-@router.delete("/cleanup-fbw")
-def cleanup_fbw_orders(db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    fbw_orders = db.query(Order).filter(Order.order_type == "FBW").all()
-    count = len(fbw_orders)
-    for o in fbw_orders:
-        db.query(OrderStatusLog).filter(OrderStatusLog.order_id == o.id).delete()
-        db.query(OrderItem).filter(OrderItem.order_id == o.id).delete()
-        db.delete(o)
-    db.commit()
-    return {"detail": f"已清除 {count} 条 FBW 订单"}
+# --- Full sync: clear all orders then re-sync ---
+
+def _run_full_order_sync():
+    db = SessionLocal()
+    try:
+        with _order_sync_lock:
+            _order_sync_status["detail"] = "正在清除旧订单数据..."
+
+        # Clear all orders
+        db.query(OrderStatusLog).delete()
+        db.query(OrderItem).delete()
+        db.query(Order).delete()
+
+        # Reset last_sync_at so sync fetches full history
+        shops = db.query(Shop).filter(Shop.is_active == True).all()
+        for shop in shops:
+            shop.last_sync_at = None
+        db.commit()
+
+        with _order_sync_lock:
+            _order_sync_status["detail"] = "正在重新同步订单..."
+
+        synced = 0
+        for shop in shops:
+            try:
+                sync_shop_orders(db, shop)
+                synced += 1
+            except Exception as e:
+                print(f"[FullSync] Failed for {shop.name}: {e}")
+
+        with _order_sync_lock:
+            _order_sync_status["status"] = "done"
+            _order_sync_status["detail"] = f"全量同步完成，已同步 {synced}/{len(shops)} 个店铺"
+    except Exception as e:
+        with _order_sync_lock:
+            _order_sync_status["status"] = "error"
+            _order_sync_status["detail"] = str(e)
+    finally:
+        db.close()
+
+
+@router.post("/full-sync")
+def trigger_full_order_sync(_=Depends(require_role("admin"))):
+    with _order_sync_lock:
+        if _order_sync_status["status"] == "running":
+            return {"status": "running", "detail": "订单同步进行中，请稍候"}
+        _order_sync_status["status"] = "running"
+        _order_sync_status["detail"] = "正在清除旧订单数据..."
+    thread = threading.Thread(target=_run_full_order_sync, daemon=True)
+    thread.start()
+    return {"status": "running", "detail": "全量同步已启动"}

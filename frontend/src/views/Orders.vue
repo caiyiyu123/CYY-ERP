@@ -7,6 +7,13 @@
           <el-button type="primary" size="small" :loading="syncing" @click="syncOrders">
             {{ syncing ? '同步中...' : '同步订单' }}
           </el-button>
+          <el-popconfirm title="将清空所有订单数据并重新抓取，确定继续？" @confirm="fullSyncOrders">
+            <template #reference>
+              <el-button type="warning" size="small" :loading="syncing">
+                {{ syncing ? '同步中...' : '全量同步' }}
+              </el-button>
+            </template>
+          </el-popconfirm>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
           <el-button v-for="p in datePresets" :key="p.label"
@@ -204,6 +211,42 @@ async function syncOrders() {
   } catch {
     syncing.value = false
     ElMessage.error('同步请求失败')
+  }
+}
+
+async function fullSyncOrders() {
+  syncing.value = true
+  try {
+    await api.post('/api/orders/full-sync')
+    let pollCount = 0
+    syncPollTimer = setInterval(async () => {
+      pollCount++
+      if (pollCount > 120) {
+        clearInterval(syncPollTimer)
+        syncPollTimer = null
+        syncing.value = false
+        ElMessage.warning('全量同步超时，请稍后查看')
+        return
+      }
+      try {
+        const { data } = await api.get('/api/orders/sync/status')
+        if (data.status === 'done') {
+          clearInterval(syncPollTimer)
+          syncPollTimer = null
+          syncing.value = false
+          ElMessage.success(data.detail || '全量同步完成')
+          fetchOrders()
+        } else if (data.status === 'error') {
+          clearInterval(syncPollTimer)
+          syncPollTimer = null
+          syncing.value = false
+          ElMessage.error('同步失败: ' + (data.detail || '未知错误'))
+        }
+      } catch { /* keep polling */ }
+    }, 2000)
+  } catch {
+    syncing.value = false
+    ElMessage.error('全量同步请求失败')
   }
 }
 
