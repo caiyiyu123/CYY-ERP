@@ -2,7 +2,7 @@ import httpx
 import time
 import threading
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # WB API base URLs
 MARKETPLACE_API = "https://marketplace-api.wildberries.ru"
@@ -45,40 +45,58 @@ def fetch_new_orders(api_token: str) -> list[dict]:
         return []
 
 
+def _fetch_orders_window(client, url: str, api_token: str, date_from_ts: int) -> list[dict]:
+    """Fetch orders for a single 30-day window starting from date_from_ts."""
+    all_orders = []
+    next_cursor = 0
+    while True:
+        params = {"limit": 1000, "next": next_cursor, "dateFrom": date_from_ts}
+        _throttle()
+        resp = client.get(url, headers=_headers(api_token), params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        orders = data.get("orders", [])
+        all_orders.extend(orders)
+        next_cursor = data.get("next", 0)
+        if not orders or next_cursor == 0:
+            break
+    return all_orders
+
+
 def fetch_orders(api_token: str, date_from: Optional[datetime] = None) -> list[dict]:
     """GET /api/v3/orders — fetch historical orders with pagination.
 
-    Each order has: id, createdAt, warehouseId, nmId, chrtId, price,
-    convertedPrice, currencyCode, cargoType, skus[], article, etc.
+    WB API returns a ~30-day window per call, so we loop in 30-day chunks
+    from date_from to now to get the full range.
     """
-    url = f"{MARKETPLACE_API}/api/v3/orders"
-    all_orders = []
-    next_cursor = 0
+    from datetime import timedelta
 
+    url = f"{MARKETPLACE_API}/api/v3/orders"
+    now = datetime.now(timezone.utc)
+
+    if not date_from:
+        date_from = now - timedelta(days=30)
+
+    all_orders = {}  # deduplicate by order id
     try:
         with httpx.Client(timeout=30) as client:
-            while True:
-                params = {"limit": 1000, "next": next_cursor}
-                if date_from:
-                    params["dateFrom"] = int(date_from.timestamp())
-
-                _throttle()
-                resp = client.get(url, headers=_headers(api_token), params=params)
-                resp.raise_for_status()
-                data = resp.json()
-
-                orders = data.get("orders", [])
-                all_orders.extend(orders)
-
-                # Pagination: if next is 0 or no more orders, stop
-                next_cursor = data.get("next", 0)
-                if not orders or next_cursor == 0:
-                    break
-
+            window_start = date_from
+            while window_start < now:
+                ts = int(window_start.timestamp())
+                orders = _fetch_orders_window(client, url, api_token, ts)
+                print(f"[WB API] fetch_orders window: dateFrom={window_start.strftime('%Y-%m-%d')}, got {len(orders)} orders")
+                for o in orders:
+                    oid = o.get("id")
+                    if oid:
+                        all_orders[oid] = o
+                # Advance window by 30 days
+                window_start += timedelta(days=30)
     except Exception as e:
         print(f"[WB API] Error fetching orders: {e}")
 
-    return all_orders
+    result = list(all_orders.values())
+    print(f"[WB API] fetch_orders total: {len(result)} unique orders")
+    return result
 
 
 def fetch_order_statuses(api_token: str, order_ids: list[int]) -> list[dict]:

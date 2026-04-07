@@ -52,12 +52,33 @@ def update_shop(shop_id: int, data: ShopUpdate, db: Session = Depends(get_db), _
 
 @router.delete("/{shop_id}")
 def delete_shop(shop_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    from app.models.order import Order, OrderItem, OrderStatusLog
+    from app.models.inventory import Inventory
+    from app.models.ad import AdCampaign, AdDailyStat
+    from app.models.product import SkuMapping
+
     shop = db.query(Shop).filter(Shop.id == shop_id).first()
     if not shop:
         raise HTTPException(status_code=404, detail="Shop not found")
+
+    # Delete all related data
+    order_ids = [o.id for o in db.query(Order.id).filter(Order.shop_id == shop_id).all()]
+    if order_ids:
+        db.query(OrderStatusLog).filter(OrderStatusLog.order_id.in_(order_ids)).delete(synchronize_session=False)
+        db.query(OrderItem).filter(OrderItem.order_id.in_(order_ids)).delete(synchronize_session=False)
+        db.query(Order).filter(Order.shop_id == shop_id).delete(synchronize_session=False)
+
+    campaign_ids = [c.id for c in db.query(AdCampaign.id).filter(AdCampaign.shop_id == shop_id).all()]
+    if campaign_ids:
+        db.query(AdDailyStat).filter(AdDailyStat.campaign_id.in_(campaign_ids)).delete(synchronize_session=False)
+        db.query(AdCampaign).filter(AdCampaign.shop_id == shop_id).delete(synchronize_session=False)
+
+    db.query(Inventory).filter(Inventory.shop_id == shop_id).delete(synchronize_session=False)
+    db.query(SkuMapping).filter(SkuMapping.shop_id == shop_id).delete(synchronize_session=False)
+
     db.delete(shop)
     db.commit()
-    return {"detail": "Shop deleted"}
+    return {"detail": "Shop and all related data deleted"}
 
 
 from app.services.sync import sync_shop_orders, sync_shop_inventory, sync_shop_ads

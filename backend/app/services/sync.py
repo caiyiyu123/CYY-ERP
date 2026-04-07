@@ -68,7 +68,13 @@ def sync_shop_orders(db: Session, shop: Shop) -> list[dict]:
     new_orders = fetch_new_orders(api_token)
 
     # Step 2: Fetch historical orders (incremental from last sync)
-    historical_orders = fetch_orders(api_token, date_from=shop.last_sync_at)
+    # When last_sync_at is None (new shop or full sync), fetch 90 days of history
+    if shop.last_sync_at is None:
+        from datetime import timedelta
+        fbs_date_from = datetime.now(timezone.utc) - timedelta(days=90)
+    else:
+        fbs_date_from = shop.last_sync_at
+    historical_orders = fetch_orders(api_token, date_from=fbs_date_from)
 
     # Step 2b: If there are zero-price orders, fetch older history to get their data
     zero_price_count = db.query(Order).filter(
