@@ -191,6 +191,35 @@ def ads_campaigns(
     return result
 
 
+@router.get("/daily-trend")
+def ads_daily_trend(
+    shop_id: Optional[int] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    accessible_shops: list[int] | None = Depends(get_accessible_shop_ids), _perm=Depends(require_module("ads")),
+):
+    """Return all daily stats in one query for the trend chart."""
+    date_from, date_to = _default_dates(date_from, date_to)
+    query = db.query(AdDailyStat).join(AdCampaign).filter(
+        AdDailyStat.date >= date_from,
+        AdDailyStat.date <= date_to,
+    )
+    if accessible_shops is not None:
+        query = query.filter(AdCampaign.shop_id.in_(accessible_shops))
+    if shop_id:
+        query = query.filter(AdCampaign.shop_id == shop_id)
+    stats = query.all()
+    return [
+        {
+            "campaign_id": s.campaign_id, "nm_id": s.nm_id, "date": s.date.isoformat(),
+            "views": s.views, "clicks": s.clicks, "spend": s.spend,
+            "orders": s.orders, "order_amount": s.order_amount,
+        }
+        for s in stats
+    ]
+
+
 @router.get("/campaigns/{campaign_id}/stats", response_model=list[AdDailyStatOut])
 def campaign_stats(
     campaign_id: int,

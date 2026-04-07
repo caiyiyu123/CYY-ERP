@@ -373,26 +373,16 @@ async function fetchAll() {
     if (shopId.value) params.shop_id = shopId.value
     const campParams = { ...params }
     if (campaignStatus.value !== null) campParams.status = campaignStatus.value
-    // Fetch all campaigns (unfiltered) for trend chart, and filtered campaigns for table
-    const [ovRes, campRes, allCampRes, prodRes] = await Promise.all([
+    const [ovRes, campRes, trendRes, prodRes] = await Promise.all([
       api.get('/api/ads/overview', { params }),
       api.get('/api/ads/campaigns', { params: campParams }),
-      api.get('/api/ads/campaigns', { params }),
+      api.get('/api/ads/daily-trend', { params }),
       api.get('/api/ads/product-stats', { params }),
     ])
     overview.value = ovRes.data
     campaigns.value = campRes.data
+    dailyStats.value = trendRes.data
     productStats.value = prodRes.data
-
-    // Use ALL campaigns' stats for trend chart (not just status-filtered ones)
-    const allStats = []
-    for (const c of allCampRes.data) {
-      try {
-        const res = await api.get(`/api/ads/campaigns/${c.id}/stats`, { params })
-        allStats.push(...res.data)
-      } catch (e) { /* skip */ }
-    }
-    dailyStats.value = allStats
   } catch (e) {
     console.error('Fetch ads data error:', e)
     ElMessage.error('数据加载失败')
