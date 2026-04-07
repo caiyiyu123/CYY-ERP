@@ -349,11 +349,11 @@ def _sync_fbo_orders(db: Session, shop: Shop, api_token: str, nm_card_map: dict)
     ).count()
 
     if fbw_count == 0:
-        sync_from = datetime.now(timezone.utc) - timedelta(days=30)
+        sync_from = datetime.now(timezone.utc) - timedelta(days=90)
     elif shop.last_sync_at:
         sync_from = shop.last_sync_at - timedelta(days=7)
     else:
-        sync_from = datetime.now(timezone.utc) - timedelta(days=30)
+        sync_from = datetime.now(timezone.utc) - timedelta(days=90)
 
     date_from = sync_from.strftime("%Y-%m-%d")
     date_to = datetime.now(timezone.utc).strftime("%Y-%m-%d")
