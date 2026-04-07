@@ -45,20 +45,20 @@ def list_shop_products(
     if not items:
         return {"total": total, "items": []}
 
-    # Build stock lookup: sum FBS + FBW per nm_id
-    nm_ids = [p.nm_id for p in items]
+    # Build stock lookup: sum FBS + FBW per vendor_code (case-insensitive)
+    vendor_codes = [p.vendor_code for p in items if p.vendor_code]
     stock_map = {}
-    nm_id_strs = [str(n) for n in nm_ids]
-    stock_rows = db.query(
-        Inventory.wb_product_id,
-        func.sum(Inventory.stock_fbs + Inventory.stock_fbw),
-    ).filter(
-        Inventory.wb_product_id.in_(nm_id_strs),
-    ).group_by(Inventory.wb_product_id).all()
-    for row in stock_rows:
-        nm_key = int(row[0]) if row[0].isdigit() else 0
-        if nm_key:
-            stock_map[nm_key] = int(row[1] or 0)
+    if vendor_codes:
+        vc_lower = [vc.lower() for vc in vendor_codes]
+        stock_rows = db.query(
+            func.lower(Inventory.sku),
+            func.sum(Inventory.stock_fbs + Inventory.stock_fbw),
+        ).filter(
+            func.lower(Inventory.sku).in_(vc_lower),
+        ).group_by(func.lower(Inventory.sku)).all()
+        for row in stock_rows:
+            if row[0]:
+                stock_map[row[0]] = int(row[1] or 0)
 
     # Get shop types for all relevant shops
     shop_ids = list({p.shop_id for p in items})
@@ -123,7 +123,7 @@ def list_shop_products(
             "discount": p.discount,
             "rating": p.rating,
             "feedbacks_count": p.feedbacks_count,
-            "stock": stock_map.get(p.nm_id, 0),
+            "stock": stock_map.get(p.vendor_code.lower(), 0) if p.vendor_code else 0,
             "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         })
 

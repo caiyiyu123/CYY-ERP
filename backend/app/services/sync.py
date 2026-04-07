@@ -741,9 +741,10 @@ def sync_shop_inventory(db: Session, shop: Shop):
             mapping = barcode_to_mapping.get(barcode)
             sku = mapping.shop_sku if mapping else barcode
             name = mapping.wb_product_name if mapping else ""
+            nm_id = mapping.wb_nm_id if mapping else ""
 
             if sku not in sku_stocks:
-                sku_stocks[sku] = {"name": name, "fbs": 0, "fbw": 0}
+                sku_stocks[sku] = {"name": name, "fbs": 0, "fbw": 0, "nm_id": nm_id}
 
             # FBS warehouses are seller's own warehouses (from /api/v3/warehouses)
             sku_stocks[sku]["fbs"] += amount
@@ -760,10 +761,13 @@ def sync_shop_inventory(db: Session, shop: Shop):
         ).first()
         if inv:
             inv.stock_fbs = data["fbs"]
+            if data.get("nm_id"):
+                inv.wb_product_id = data["nm_id"]
             inv.updated_at = datetime.now(timezone.utc)
         else:
             inv = Inventory(
                 shop_id=shop.id,
+                wb_product_id=data.get("nm_id", ""),
                 product_name=data["name"],
                 sku=sku,
                 barcode=sku,
