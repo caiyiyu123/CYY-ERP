@@ -71,10 +71,10 @@
           <template #default="{ row }">{{ row.total_clicks?.toLocaleString() }}</template>
         </el-table-column>
         <el-table-column prop="total_orders" label="订单" min-width="70" />
-        <el-table-column prop="roas" label="ROAS" min-width="80">
+        <el-table-column prop="roas" label="广告占比" min-width="90">
           <template #default="{ row }">
-            <span :style="{ color: row.roas >= 2 ? '#22c55e' : row.roas >= 1 ? '#f59e0b' : '#ef4444', fontWeight: 'bold' }">
-              {{ row.roas }}
+            <span :style="{ color: adRatioColor(row.roas), fontWeight: 'bold' }">
+              {{ fmtAdRatio(row.roas) }}
             </span>
           </template>
         </el-table-column>
@@ -120,10 +120,10 @@
                 <el-table-column label="订单金额" min-width="90">
                   <template #default="{ row: c }">₽{{ Math.round(c.order_amount)?.toLocaleString() }}</template>
                 </el-table-column>
-                <el-table-column label="ROAS" min-width="70">
+                <el-table-column label="广告占比" min-width="80">
                   <template #default="{ row: c }">
-                    <span :style="{ color: c.roas >= 2 ? '#22c55e' : c.roas >= 1 ? '#f59e0b' : '#ef4444', fontWeight: 'bold' }">
-                      {{ c.roas }}
+                    <span :style="{ color: adRatioColor(c.roas), fontWeight: 'bold' }">
+                      {{ fmtAdRatio(c.roas) }}
                     </span>
                   </template>
                 </el-table-column>
@@ -155,10 +155,10 @@
         <el-table-column prop="total_order_amount" label="订单金额" min-width="100">
           <template #default="{ row }">₽{{ Math.round(row.total_order_amount)?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="roas" label="ROAS" min-width="80">
+        <el-table-column prop="roas" label="广告占比" min-width="90">
           <template #default="{ row }">
-            <span :style="{ color: row.roas >= 2 ? '#22c55e' : row.roas >= 1 ? '#f59e0b' : '#ef4444', fontWeight: 'bold' }">
-              {{ row.roas }}
+            <span :style="{ color: adRatioColor(row.roas), fontWeight: 'bold' }">
+              {{ fmtAdRatio(row.roas) }}
             </span>
           </template>
         </el-table-column>
@@ -166,10 +166,10 @@
         <el-table-column prop="overall_order_amount" label="总订单金额" min-width="100">
           <template #default="{ row }">₽{{ Math.round(row.overall_order_amount)?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="overall_roas" label="总ROAS" min-width="80">
+        <el-table-column prop="overall_roas" label="总广告占比" min-width="90">
           <template #default="{ row }">
-            <span :style="{ color: row.overall_roas >= 2 ? '#3b82f6' : row.overall_roas >= 1 ? '#f59e0b' : '#ef4444', fontWeight: 'bold' }">
-              {{ row.overall_roas }}
+            <span :style="{ color: adRatioColor(row.overall_roas), fontWeight: 'bold' }">
+              {{ fmtAdRatio(row.overall_roas) }}
             </span>
           </template>
         </el-table-column>
@@ -305,8 +305,23 @@ function onDateChange(val) {
 function fmtKpi(value, prefix) {
   if (value == null) return '-'
   if (prefix === '₽') return '₽' + Math.round(value).toLocaleString()
+  if (prefix === '%') return fmtAdRatio(value)
   if (typeof value === 'number' && value % 1 !== 0 && !prefix) return value.toFixed(2)
   return (prefix || '') + value.toLocaleString()
+}
+
+function fmtAdRatio(roas) {
+  if (!roas || roas <= 0) return '-'
+  return (100 / roas).toFixed(1) + '%'
+}
+
+function adRatioColor(roas) {
+  if (!roas || roas <= 0) return '#64748b'
+  const ratio = 100 / roas
+  if (ratio <= 20) return '#22c55e'
+  if (ratio <= 50) return '#22c55e'
+  if (ratio <= 100) return '#f59e0b'
+  return '#ef4444'
 }
 
 const kpis = computed(() => [
@@ -314,10 +329,10 @@ const kpis = computed(() => [
   { label: '展示量', value: overview.value.total_views, prefix: '' },
   { label: '点击量', value: overview.value.total_clicks, prefix: '' },
   { label: '推广订单', value: overview.value.total_orders, prefix: '' },
-  { label: 'ROAS', value: overview.value.roas, prefix: '', color: '#22c55e' },
+  { label: '广告占比', value: overview.value.roas, prefix: '%', color: '#22c55e' },
   { label: '总订单', value: overview.value.overall_orders, prefix: '' },
   { label: '总订单金额', value: overview.value.overall_order_amount, prefix: '₽' },
-  { label: '总ROAS', value: overview.value.overall_roas, prefix: '', color: '#3b82f6' },
+  { label: '总广告占比', value: overview.value.overall_roas, prefix: '%', color: '#3b82f6' },
 ])
 
 const TYPE_MAP = { 5: '自动', 6: '搜索', 7: '卡片', 8: '推荐', 9: '搜索+推荐' }

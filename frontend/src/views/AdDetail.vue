@@ -22,7 +22,7 @@
         <el-card shadow="hover">
           <div class="ts-stat-label">{{ kpi.label }}</div>
           <div :style="{ fontSize: '20px', fontWeight: 'bold', marginTop: '4px', color: kpi.color || 'var(--ts-text-heading)' }">
-            {{ kpi.prefix }}{{ kpi.value?.toLocaleString() }}
+            {{ kpi.prefix === '%' ? fmtAdRatio(kpi.value) : (kpi.prefix || '') + (kpi.value?.toLocaleString() ?? '-') }}
           </div>
         </el-card>
       </el-col>
@@ -51,10 +51,10 @@
         <el-table-column prop="order_amount" label="订单金额" min-width="100">
           <template #default="{ row }">¥ {{ row.order_amount?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="roas" label="ROAS" min-width="80">
+        <el-table-column prop="roas" label="广告占比" min-width="90">
           <template #default="{ row }">
-            <span :style="{ color: row.roas >= 2 ? '#22c55e' : row.roas >= 1 ? '#f59e0b' : '#ef4444', fontWeight: 'bold' }">
-              {{ row.roas }}
+            <span :style="{ color: adRatioColor(row.roas), fontWeight: 'bold' }">
+              {{ fmtAdRatio(row.roas) }}
             </span>
           </template>
         </el-table-column>
@@ -124,6 +124,19 @@ function typeTagType(t) { return TYPE_TAG[t] || '' }
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusColor(s) { return STATUS_COLOR[s] || '#606266' }
 
+function fmtAdRatio(roas) {
+  if (!roas || roas <= 0) return '-'
+  return (100 / roas).toFixed(1) + '%'
+}
+
+function adRatioColor(roas) {
+  if (!roas || roas <= 0) return '#64748b'
+  const ratio = 100 / roas
+  if (ratio <= 50) return '#22c55e'
+  if (ratio <= 100) return '#f59e0b'
+  return '#ef4444'
+}
+
 const totals = computed(() => {
   let spend = 0, views = 0, clicks = 0, orders = 0, order_amount = 0, atbs = 0
   for (const s of stats.value) {
@@ -141,7 +154,7 @@ const kpis = computed(() => [
   { label: '点击', value: totals.value.clicks, prefix: '' },
   { label: 'CTR', value: totals.value.ctr, prefix: '', color: '#3b82f6' },
   { label: '订单', value: totals.value.orders, prefix: '' },
-  { label: 'ROAS', value: totals.value.roas, prefix: '', color: '#22c55e' },
+  { label: '广告占比', value: totals.value.roas, prefix: '%', color: '#22c55e' },
 ])
 
 const productAgg = computed(() => {
