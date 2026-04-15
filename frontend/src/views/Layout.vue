@@ -38,7 +38,7 @@
         </el-menu-item>
         <el-menu-item v-if="hasPerm('customer_service')" index="/customer-service">
           <el-icon><ChatDotRound /></el-icon>
-          <span>客户互动</span>
+          <span>评价客服</span>
         </el-menu-item>
         <el-menu-item v-if="hasPerm('inventory')" index="/inventory">
           <el-icon><List /></el-icon>

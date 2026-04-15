@@ -2,7 +2,7 @@
   <el-card>
     <template #header>
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px">
-        <span>客户互动</span>
+        <span>评价客服</span>
         <div style="display: flex; gap: 8px; align-items: center">
           <el-select v-model="shopId" placeholder="选择店铺" size="small" style="width: 150px" @change="onFilterChange">
             <el-option v-for="s in shops" :key="s.id" :label="s.name" :value="s.id" />
