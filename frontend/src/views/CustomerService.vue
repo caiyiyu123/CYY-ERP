@@ -40,11 +40,20 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="评价内容" min-width="300">
+          <el-table-column label="评价内容" min-width="400">
             <template #default="{ row }">
-              <div style="font-size: 13px">{{ row.text || '-' }}</div>
-              <div v-if="row._textZh" style="color: #409eff; font-size: 12px; margin-top: 4px">{{ row._textZh }}</div>
-              <el-button v-else-if="row.text" link type="primary" size="small" style="margin-top: 2px; font-size: 12px" :loading="row._translating" @click="translateRow(row)">翻译</el-button>
+              <div v-if="row.pros" style="font-size: 13px; margin-bottom: 4px"><span style="color: #67c23a; font-weight: 500">优点：</span>{{ row.pros }}</div>
+              <div v-if="row.cons" style="font-size: 13px; margin-bottom: 4px"><span style="color: #f56c6c; font-weight: 500">缺点：</span>{{ row.cons }}</div>
+              <div v-if="row.text" style="font-size: 13px"><span style="color: #909399; font-weight: 500">评论：</span>{{ row.text }}</div>
+              <div v-if="!row.pros && !row.cons && !row.text" style="color: #ccc">-</div>
+              <div v-if="row.photoLinks && row.photoLinks.length" style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px">
+                <el-image v-for="(p, i) in row.photoLinks" :key="i" :src="p.miniSize || p.fullSize" :preview-src-list="row.photoLinks.map(x => x.fullSize || x.miniSize)" preview-teleported style="width: 40px; height: 40px; border-radius: 4px" fit="cover" />
+              </div>
+              <div v-if="row.video && row.video.url" style="margin-top: 6px">
+                <a :href="row.video.url" target="_blank" style="color: #409eff; font-size: 12px; text-decoration: none">查看视频</a>
+              </div>
+              <div v-if="row._allZh" style="color: #409eff; font-size: 12px; margin-top: 4px; white-space: pre-line">{{ row._allZh }}</div>
+              <el-button v-else-if="row.pros || row.cons || row.text" link type="primary" size="small" style="margin-top: 2px; font-size: 12px" :loading="row._translating" @click="translateFeedback(row)">翻译</el-button>
             </template>
           </el-table-column>
           <el-table-column label="日期" width="110" align="center">
@@ -177,9 +186,25 @@
       </p>
       <p style="margin-bottom: 8px"><strong>{{ replyType === 'feedback' ? '评价' : '问题' }}：</strong></p>
       <div style="background: #f5f7fa; padding: 12px; border-radius: 4px; margin-bottom: 16px">
-        <div>{{ replyItem.text || '-' }}</div>
-        <div v-if="replyItem._textZh" style="color: #409eff; margin-top: 6px">{{ replyItem._textZh }}</div>
-        <el-button v-else-if="replyItem.text" link type="primary" size="small" style="margin-top: 4px" :loading="replyItem._translating" @click="translateRow(replyItem)">翻译</el-button>
+        <template v-if="replyType === 'feedback'">
+          <div v-if="replyItem.pros" style="margin-bottom: 6px"><span style="color: #67c23a; font-weight: 500">优点：</span>{{ replyItem.pros }}</div>
+          <div v-if="replyItem.cons" style="margin-bottom: 6px"><span style="color: #f56c6c; font-weight: 500">缺点：</span>{{ replyItem.cons }}</div>
+          <div v-if="replyItem.text"><span style="color: #909399; font-weight: 500">评论：</span>{{ replyItem.text }}</div>
+          <div v-if="!replyItem.pros && !replyItem.cons && !replyItem.text">-</div>
+          <div v-if="replyItem.photoLinks && replyItem.photoLinks.length" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px">
+            <el-image v-for="(p, i) in replyItem.photoLinks" :key="i" :src="p.fullSize || p.miniSize" :preview-src-list="replyItem.photoLinks.map(x => x.fullSize || x.miniSize)" preview-teleported style="width: 80px; height: 80px; border-radius: 6px" fit="cover" />
+          </div>
+          <div v-if="replyItem.video && replyItem.video.url" style="margin-top: 10px">
+            <video :src="replyItem.video.url" controls style="max-width: 100%; max-height: 240px; border-radius: 6px"></video>
+          </div>
+          <div v-if="replyItem._allZh" style="color: #409eff; margin-top: 6px; white-space: pre-line">{{ replyItem._allZh }}</div>
+          <el-button v-else-if="replyItem.pros || replyItem.cons || replyItem.text" link type="primary" size="small" style="margin-top: 4px" :loading="replyItem._translating" @click="translateFeedback(replyItem)">翻译</el-button>
+        </template>
+        <template v-else>
+          <div>{{ replyItem.text || '-' }}</div>
+          <div v-if="replyItem._textZh" style="color: #409eff; margin-top: 6px">{{ replyItem._textZh }}</div>
+          <el-button v-else-if="replyItem.text" link type="primary" size="small" style="margin-top: 4px" :loading="replyItem._translating" @click="translateRow(replyItem)">翻译</el-button>
+        </template>
       </div>
       <div v-if="replyItem.answer">
         <p style="margin-bottom: 8px"><strong>已回复：</strong></p>
@@ -241,10 +266,6 @@ async function fetchShops() {
   try {
     const { data } = await api.get('/api/shops')
     shops.value = data
-    if (data.length > 0) {
-      shopId.value = data[0].id
-      fetchData()
-    }
   } catch {}
 }
 
@@ -326,6 +347,24 @@ async function translateRow(row) {
   try {
     const { data } = await api.post('/api/customer-service/translate', { text: row.text })
     row._textZh = data.translated || ''
+  } catch {
+    ElMessage.error('翻译失败')
+  } finally {
+    row._translating = false
+  }
+}
+
+async function translateFeedback(row) {
+  if (row._allZh) return
+  row._translating = true
+  try {
+    const parts = []
+    if (row.pros) parts.push('优点：' + row.pros)
+    if (row.cons) parts.push('缺点：' + row.cons)
+    if (row.text) parts.push('评论：' + row.text)
+    const fullText = [row.pros, row.cons, row.text].filter(Boolean).join('\n')
+    const { data } = await api.post('/api/customer-service/translate', { text: fullText })
+    row._allZh = data.translated || ''
   } catch {
     ElMessage.error('翻译失败')
   } finally {

@@ -137,7 +137,8 @@
               <el-image v-if="row.image_url" :src="row.image_url" style="width: 60px; height: 80px; border-radius: 6px; flex-shrink: 0" fit="cover" :preview-src-list="[row.image_url]" preview-teleported>
                 <template #error><span style="color: #ccc; font-size: 12px">无图</span></template>
               </el-image>
-              <span>{{ row.product_name || '-' }}</span>
+              <a v-if="row.nm_id" :href="'https://www.wildberries.ru/catalog/' + row.nm_id + '/detail.aspx'" target="_blank" style="color: #409eff; text-decoration: none">{{ row.product_name || '-' }}</a>
+              <span v-else>{{ row.product_name || '-' }}</span>
             </div>
           </template>
         </el-table-column>

@@ -36,7 +36,11 @@
     <el-card>
       <template #header>商品明细</template>
       <el-table :data="productAgg" stripe>
-        <el-table-column prop="nm_id" label="商品ID" min-width="100" />
+        <el-table-column label="商品ID" min-width="100">
+          <template #default="{ row }">
+            <a :href="'https://www.wildberries.ru/catalog/' + row.nm_id + '/detail.aspx'" target="_blank" style="color: #409eff; text-decoration: none">{{ row.nm_id }}</a>
+          </template>
+        </el-table-column>
         <el-table-column prop="spend" label="花费" min-width="90">
           <template #default="{ row }">¥ {{ row.spend?.toLocaleString() }}</template>
         </el-table-column>

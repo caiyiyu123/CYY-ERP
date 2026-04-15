@@ -28,10 +28,18 @@
       <el-table-column prop="vendor_code" label="SKU" min-width="130" />
       <el-table-column label="产品标题" min-width="220">
         <template #default="{ row }">
-          <el-tooltip v-if="row.title.length > 35" :content="row.title" placement="top">
-            <span>{{ row.title.slice(0, 35) + '...' }}</span>
-          </el-tooltip>
-          <span v-else>{{ row.title }}</span>
+          <a v-if="row.nm_id" :href="'https://www.wildberries.ru/catalog/' + row.nm_id + '/detail.aspx'" target="_blank" style="color: #409eff; text-decoration: none">
+            <el-tooltip v-if="row.title.length > 35" :content="row.title" placement="top">
+              <span>{{ row.title.slice(0, 35) + '...' }}</span>
+            </el-tooltip>
+            <span v-else>{{ row.title }}</span>
+          </a>
+          <template v-else>
+            <el-tooltip v-if="row.title.length > 35" :content="row.title" placement="top">
+              <span>{{ row.title.slice(0, 35) + '...' }}</span>
+            </el-tooltip>
+            <span v-else>{{ row.title }}</span>
+          </template>
         </template>
       </el-table-column>
       <el-table-column label="价格(₽)" width="100" align="center">
