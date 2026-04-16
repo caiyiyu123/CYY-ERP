@@ -7,6 +7,7 @@
       </div>
     </template>
     <el-table :data="products" stripe>
+      <el-table-column prop="developer" label="开发员" width="90" />
       <el-table-column label="图片" width="80" align="center">
         <template #default="{ row }">
           <el-image v-if="row.image" :src="imageUrl(row.image)" style="width: 50px; height: 50px; display: block; cursor: pointer" fit="contain" :preview-src-list="[imageUrl(row.image)]" preview-teleported />
@@ -24,6 +25,19 @@
       <el-table-column prop="height" label="高(cm)" align="center" min-width="70" />
       <el-table-column label="密度" align="center" min-width="80">
         <template #default="{ row }">{{ calcDensity(row) }}</template>
+      </el-table-column>
+      <el-table-column label="装箱数" align="center" min-width="80">
+        <template #default="{ row }">
+          <el-input-number
+            v-model="row.packing_qty"
+            :min="0"
+            :precision="0"
+            :controls="false"
+            size="small"
+            style="width: 60px; font-size: 12px"
+            @change="savePackingQty(row)"
+          />
+        </template>
       </el-table-column>
       <el-table-column label="头程运费(预估)" align="center" min-width="120">
         <template #default="{ row }">
@@ -60,6 +74,11 @@
 
   <el-dialog v-model="showDialog" :title="form.id ? '编辑商品' : '添加商品'" width="500px">
     <el-form :model="form" label-width="80px">
+      <el-form-item label="开发员">
+        <el-select v-model="form.developer" placeholder="选择开发员" clearable style="width: 100%">
+          <el-option v-for="u in userNames" :key="u" :label="u" :value="u" />
+        </el-select>
+      </el-form-item>
       <el-form-item label="商品SKU"><el-input v-model="form.sku" /></el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
       <el-form-item label="采购价"><el-input-number v-model="form.purchase_price" :min="0" :precision="1" /></el-form-item>
@@ -85,6 +104,7 @@ import api, { imageUrl } from '../api'
 import ImageUploader from '../components/ImageUploader.vue'
 
 const products = ref([])
+const userNames = ref([])
 const shippingRates = ref([])
 const usdToCny = ref(0)
 
@@ -119,6 +139,14 @@ async function fetchShippingConfig() {
   } catch { /* ignore */ }
 }
 
+async function savePackingQty(row) {
+  try {
+    await api.put(`/api/products/${row.id}`, { packing_qty: row.packing_qty || 0 })
+  } catch {
+    ElMessage.error('保存失败')
+  }
+}
+
 async function saveActualShipping(row) {
   try {
     await api.put(`/api/products/${row.id}`, { actual_shipping_cost: row.actual_shipping_cost || 0 })
@@ -128,12 +156,19 @@ async function saveActualShipping(row) {
 }
 
 const showDialog = ref(false)
-const defaultForm = { id: null, sku: '', name: '', purchase_price: 0, weight: 0, length: 0, width: 0, height: 0, actual_shipping_cost: 0 }
+const defaultForm = { id: null, developer: '', sku: '', name: '', purchase_price: 0, weight: 0, length: 0, width: 0, height: 0, actual_shipping_cost: 0 }
 const form = reactive({ ...defaultForm })
 const pendingImage = ref(null)
 const imagePreview = ref('')
 const imgUploaderRef = ref(null)
 const imageRemoved = ref(false)
+
+async function fetchUserNames() {
+  try {
+    const { data } = await api.get('/api/users')
+    userNames.value = data.map(u => u.display_name || u.username).filter(Boolean)
+  } catch { /* ignore */ }
+}
 
 async function fetchProducts() {
   try {
@@ -179,7 +214,7 @@ async function uploadImage(productId) {
 
 async function saveProduct() {
   try {
-    const payload = { sku: form.sku, name: form.name, purchase_price: form.purchase_price, weight: form.weight, length: form.length, width: form.width, height: form.height, actual_shipping_cost: form.actual_shipping_cost }
+    const payload = { developer: form.developer, sku: form.sku, name: form.name, purchase_price: form.purchase_price, weight: form.weight, length: form.length, width: form.width, height: form.height, actual_shipping_cost: form.actual_shipping_cost }
     let productId = form.id
     if (form.id) {
       await api.put(`/api/products/${form.id}`, payload)
@@ -214,6 +249,7 @@ async function deleteProduct(id) {
 
 onMounted(() => {
   fetchProducts()
+  fetchUserNames()
   fetchShippingConfig()
 })
 </script>

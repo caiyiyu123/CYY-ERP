@@ -14,7 +14,7 @@
       </div>
     </template>
     <el-table :data="flatRows" stripe v-loading="loading" :span-method="spanMethod">
-      <el-table-column prop="operator_name" label="运营姓名" width="100" />
+      <el-table-column prop="operator_name" label="采购员" width="100" />
       <el-table-column prop="purchase_date" label="采购日期" width="120" />
       <el-table-column label="商品图片" width="80" align="center">
         <template #default="{ row }">
@@ -79,7 +79,7 @@
   <el-dialog v-model="showDialog" :title="form.id ? '编辑采购计划' : '新增采购计划'" width="900px" top="5vh">
     <el-form :model="form" label-width="90px">
       <div style="display: flex; gap: 16px">
-        <el-form-item label="运营姓名" style="flex: 1">
+        <el-form-item label="采购员" style="flex: 1">
           <el-select v-model="form.operator_name" placeholder="选择运营" style="width: 100%">
             <el-option v-for="u in userNames" :key="u" :label="u" :value="u" />
           </el-select>
@@ -128,8 +128,10 @@
             <el-input-number v-model="row.boxes" :min="0" :precision="0" :controls="false" size="small" style="width: 80px" />
           </template>
         </el-table-column>
-        <el-table-column label="小计" width="100" align="center">
-          <template #default="{ row }">¥ {{ (row.quantity * row.unit_price).toFixed(2) }}</template>
+        <el-table-column label="小计" width="120" align="right">
+          <template #default="{ row }">
+            <span style="font-weight: 600; white-space: nowrap">¥ {{ (row.quantity * row.unit_price).toFixed(1) }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="" width="50" align="center">
           <template #default="{ $index }">
@@ -182,10 +184,10 @@ function statusType(s) { return STATUS_TYPE[s] || 'info' }
 
 function calcTotal(plan) {
   const itemsTotal = plan.items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0)
-  return (itemsTotal + (plan.express_fee || 0)).toFixed(2)
+  return (itemsTotal + (plan.express_fee || 0)).toFixed(1)
 }
 
-// 合并列索引：运营姓名(0), 采购日期(1), 快递费用(8), 采购总金额(9), 状态(10), 操作(11)
+// 合并列索引：采购员(0), 采购日期(1), 快递费用(8), 采购总金额(9), 状态(10), 操作(11)
 const MERGE_COLS = new Set([0, 1, 8, 9, 10, 11])
 
 const flatRows = computed(() => {
@@ -225,7 +227,7 @@ function spanMethod({ row, columnIndex }) {
 
 const calcFormTotal = computed(() => {
   const itemsTotal = form.items.reduce((sum, i) => sum + (i.quantity || 0) * (i.unit_price || 0), 0)
-  return (itemsTotal + (form.express_fee || 0)).toFixed(2)
+  return (itemsTotal + (form.express_fee || 0)).toFixed(1)
 })
 
 async function fetchPlans() {
@@ -302,7 +304,7 @@ function openDialog(row) {
 
 async function savePlan() {
   if (!form.operator_name || !form.purchase_date) {
-    ElMessage.warning('请填写运营姓名和采购日期')
+    ElMessage.warning('请填写采购员和采购日期')
     return
   }
   if (!form.items.length) {

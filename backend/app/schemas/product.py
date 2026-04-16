@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 
 class ProductCreate(BaseModel):
+    developer: str = ""
     sku: str
     name: str = ""
     purchase_price: float = 0.0
@@ -11,10 +12,12 @@ class ProductCreate(BaseModel):
     length: float = 0.0
     width: float = 0.0
     height: float = 0.0
+    packing_qty: int = 0
     actual_shipping_cost: float = 0.0
 
 
 class ProductUpdate(BaseModel):
+    developer: Optional[str] = None
     sku: Optional[str] = None
     name: Optional[str] = None
     purchase_price: Optional[float] = None
@@ -22,12 +25,14 @@ class ProductUpdate(BaseModel):
     length: Optional[float] = None
     width: Optional[float] = None
     height: Optional[float] = None
+    packing_qty: Optional[int] = None
     actual_shipping_cost: Optional[float] = None
     image: Optional[str] = None
 
 
 class ProductOut(BaseModel):
     id: int
+    developer: str
     sku: str
     name: str
     image: str
@@ -36,6 +41,7 @@ class ProductOut(BaseModel):
     length: float
     width: float
     height: float
+    packing_qty: int
     actual_shipping_cost: float
     created_at: datetime
     updated_at: datetime

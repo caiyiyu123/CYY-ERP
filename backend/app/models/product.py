@@ -12,6 +12,7 @@ def _utcnow():
 class Product(Base):
     __tablename__ = "products"
     id: Mapped[int] = mapped_column(primary_key=True)
+    developer: Mapped[str] = mapped_column(String(50), default="")
     sku: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200), default="")
     image: Mapped[str] = mapped_column(String(500), default="")
@@ -20,6 +21,7 @@ class Product(Base):
     length: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[float] = mapped_column(Float, default=0.0)
     height: Mapped[float] = mapped_column(Float, default=0.0)
+    packing_qty: Mapped[int] = mapped_column(Integer, default=0)
     actual_shipping_cost: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

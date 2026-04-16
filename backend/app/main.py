@@ -27,6 +27,14 @@ try:
             conn.execute(text("ALTER TABLE products ADD COLUMN actual_shipping_cost FLOAT DEFAULT 0.0"))
             conn.commit()
             print("[Migration] Added actual_shipping_cost column to products table")
+        if "developer" not in product_cols:
+            conn.execute(text("ALTER TABLE products ADD COLUMN developer VARCHAR(50) DEFAULT ''"))
+            conn.commit()
+            print("[Migration] Added developer column to products table")
+        if "packing_qty" not in product_cols:
+            conn.execute(text("ALTER TABLE products ADD COLUMN packing_qty INTEGER DEFAULT 0"))
+            conn.commit()
+            print("[Migration] Added packing_qty column to products table")
 except Exception as e:
     print(f"[Migration] Skipped: {e}")
 
