@@ -133,7 +133,13 @@
         </div>
         <el-table :data="replyTemplates" stripe>
           <el-table-column prop="name" label="模板名称" width="200" />
-          <el-table-column prop="content" label="回复内容" min-width="400" />
+          <el-table-column label="回复内容" min-width="400">
+            <template #default="{ row }">
+              <div>{{ row.content }}</div>
+              <div v-if="row.zhContent" style="color: #409eff; font-size: 12px; margin-top: 4px">{{ row.zhContent }}</div>
+              <el-button v-else link type="primary" size="small" style="margin-top: 2px; font-size: 12px" :loading="row._translating" @click="translateTemplate(row)">翻译</el-button>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="140" align="center">
             <template #default="{ row }">
               <el-button size="small" link @click="openTemplateDialog(row)">编辑</el-button>
@@ -147,22 +153,22 @@
         </el-table>
       </el-tab-pane>
 
-      <!-- 聊天 Tab -->
-      <el-tab-pane label="聊天" name="chats">
+      <!-- 客服 Tab -->
+      <el-tab-pane label="客服" name="chats">
         <div style="display: flex; height: 500px; border: 1px solid #e4e7ed; border-radius: 4px">
           <!-- 聊天列表 -->
           <div style="width: 280px; border-right: 1px solid #e4e7ed; overflow-y: auto">
             <div v-if="loading" style="padding: 20px; text-align: center; color: #999">加载中...</div>
             <div v-else-if="chatList.length === 0" style="padding: 20px; text-align: center; color: #999">暂无聊天</div>
             <div
-              v-for="chat in chatList" :key="chat.chatId || chat.id"
+              v-for="chat in chatList" :key="chat.chatID"
               @click="selectChat(chat)"
               :style="{
                 padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0',
-                background: selectedChat && (selectedChat.chatId || selectedChat.id) === (chat.chatId || chat.id) ? '#f0f7ff' : ''
+                background: selectedChat && selectedChat.chatID === chat.chatID ? '#f0f7ff' : ''
               }"
             >
-              <div style="font-weight: 500; font-size: 14px">{{ chat.userName || chat.buyerName || '买家' }}</div>
+              <div style="font-weight: 500; font-size: 14px">{{ chat.clientName || '买家' }}</div>
               <div style="color: #999; font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
                 {{ chat.lastMessage || '' }}
               </div>
@@ -181,9 +187,10 @@
                     background: msg.isSeller ? '#409eff' : '#f4f4f5',
                     color: msg.isSeller ? '#fff' : '#333'
                   }">
-                    {{ msg.text || msg.message || '' }}
+                    <div>{{ msg.text || '' }}</div>
+                    <div v-if="msg._zhText" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.08); font-size: 12px; opacity: 0.85">{{ msg._zhText }}</div>
                   </div>
-                  <div style="font-size: 11px; color: #bbb; margin-top: 2px">{{ formatDate(msg.createdAt || msg.dt) }}</div>
+                  <div style="font-size: 11px; color: #bbb; margin-top: 2px">{{ formatTimestamp(msg.createdAt) }}</div>
                 </div>
               </div>
               <div style="padding: 12px; border-top: 1px solid #e4e7ed; display: flex; gap: 8px">
@@ -284,7 +291,8 @@ const templateForm = reactive({ id: null, name: '', content: '' })
 
 function loadTemplates() {
   try {
-    replyTemplates.value = JSON.parse(localStorage.getItem(TEMPLATE_KEY) || '[]')
+    const list = JSON.parse(localStorage.getItem(TEMPLATE_KEY) || '[]')
+    replyTemplates.value = list.map(t => ({ ...t, zhContent: '', _translating: false }))
   } catch { replyTemplates.value = [] }
 }
 
@@ -312,7 +320,11 @@ function saveReplyTemplate() {
   }
   if (templateForm.id) {
     const t = replyTemplates.value.find(x => x.id === templateForm.id)
-    if (t) { t.name = templateForm.name; t.content = templateForm.content }
+    if (t) {
+      if (t.content !== templateForm.content) { t.zhContent = ''; t._translating = false }
+      t.name = templateForm.name
+      t.content = templateForm.content
+    }
   } else {
     replyTemplates.value.push({ id: Date.now(), name: templateForm.name, content: templateForm.content })
   }
@@ -325,6 +337,17 @@ function deleteReplyTemplate(id) {
   replyTemplates.value = replyTemplates.value.filter(x => x.id !== id)
   saveTemplates()
   ElMessage.success('删除成功')
+}
+
+async function translateTemplate(row) {
+  if (row.zhContent) return
+  row._translating = true
+  try {
+    const { data } = await api.post('/api/customer-service/translate', { text: row.content })
+    row.zhContent = data.translated || ''
+    saveTemplates()
+  } catch { ElMessage.error('翻译失败') }
+  finally { row._translating = false }
 }
 
 async function quickReply(row, text, type) {
@@ -373,6 +396,15 @@ function formatDate(dt) {
   } catch { return dt }
 }
 
+function formatTimestamp(ts) {
+  if (!ts) return '-'
+  try {
+    // WB API returns Unix timestamp in seconds or milliseconds
+    const ms = ts > 1e12 ? ts : ts * 1000
+    return new Date(ms).toLocaleString('zh-CN')
+  } catch { return '-' }
+}
+
 async function fetchShops() {
   try {
     const { data } = await api.get('/api/shops')
@@ -419,28 +451,43 @@ async function fetchData() {
 
 async function selectChat(chat) {
   selectedChat.value = chat
-  const chatId = chat.chatId || chat.id
   try {
-    const { data } = await api.get(`/api/customer-service/chats/${chatId}/messages`, {
+    const { data } = await api.get(`/api/customer-service/chats/${chat.chatID}/messages`, {
       params: { shop_id: shopId.value }
     })
-    chatMessages.value = Array.isArray(data) ? data : []
+    chatMessages.value = (Array.isArray(data) ? data : []).map(m => ({ ...m, _zhText: '' }))
     await nextTick()
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
+    autoTranslateChatMessages()
   } catch (e) {
     ElMessage.error('加载消息失败')
   }
 }
 
+async function autoTranslateChatMessages() {
+  const buyerMsgs = chatMessages.value.filter(m => !m.isSeller && m.text)
+  if (!buyerMsgs.length) return
+  const separator = '\n||SPLIT||\n'
+  const allText = buyerMsgs.map(m => m.text).join(separator)
+  try {
+    const { data } = await api.post('/api/customer-service/translate', { text: allText })
+    const parts = (data.translated || '').split('||SPLIT||')
+    buyerMsgs.forEach((m, i) => {
+      m._zhText = (parts[i] || '').trim()
+    })
+  } catch { /* 翻译失败静默 */ }
+}
+
 async function sendMessage() {
   if (!chatInput.value.trim() || !selectedChat.value) return
-  const chatId = selectedChat.value.chatId || selectedChat.value.id
   sending.value = true
   try {
-    await api.post(`/api/customer-service/chats/${chatId}/message`, {
-      shop_id: shopId.value, text: chatInput.value
+    await api.post('/api/customer-service/chats/message', {
+      shop_id: shopId.value,
+      reply_sign: selectedChat.value.replySign,
+      text: chatInput.value,
     })
     chatInput.value = ''
     ElMessage.success('发送成功')

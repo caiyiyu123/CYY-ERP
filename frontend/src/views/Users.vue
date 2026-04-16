@@ -116,6 +116,8 @@ const allModules = [
   { value: 'products', label: '商品管理' },
   { value: 'ads', label: '推广数据' },
   { value: 'finance', label: '财务管理' },
+  { value: 'customer_service', label: '评价客服' },
+  { value: 'commission_shipping', label: '佣金运费' },
   { value: 'inventory', label: '库存管理' },
   { value: 'shops', label: '店铺管理' },
 ]

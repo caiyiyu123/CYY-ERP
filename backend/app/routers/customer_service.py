@@ -168,19 +168,19 @@ def get_chat_messages(
 
 class ChatMessageBody(BaseModel):
     shop_id: int
+    reply_sign: str
     text: str
 
 
-@router.post("/chats/{chat_id}/message")
+@router.post("/chats/message")
 def do_send_chat_message(
-    chat_id: str,
     body: ChatMessageBody,
     db: Session = Depends(get_db),
     accessible_shops: list[int] | None = Depends(get_accessible_shop_ids),
     _=Depends(require_module("customer_service")),
 ):
     token = _get_token(db, body.shop_id, accessible_shops)
-    result = send_chat_message(token, chat_id, body.text)
+    result = send_chat_message(token, body.reply_sign, body.text)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Send failed"))
     return {"detail": "ok"}

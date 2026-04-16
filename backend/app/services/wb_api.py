@@ -9,7 +9,7 @@ MARKETPLACE_API = "https://marketplace-api.wildberries.ru"
 STATISTICS_API = "https://statistics-api.wildberries.ru"
 ADVERT_API = "https://advert-api.wildberries.ru"
 FEEDBACKS_API = "https://feedbacks-api.wildberries.ru"
-CHAT_API = "https://suppliers-api.wildberries.ru"
+CHAT_API = "https://buyer-chat-api.wildberries.ru"
 
 # Rate limit: min 200ms between requests
 _last_request_time = 0.0
@@ -852,39 +852,99 @@ def fetch_chats(api_token: str) -> list:
             resp = client.get(url, headers=_headers(api_token))
             if resp.status_code == 200:
                 data = resp.json()
-                return data if isinstance(data, list) else data.get("chats", [])
-            print(f"[WB API] chats: status={resp.status_code}")
+                chats = data.get("result", [])
+                result = []
+                for c in chats:
+                    last_msg = c.get("lastMessage") or {}
+                    result.append({
+                        "chatID": c.get("chatID", ""),
+                        "replySign": c.get("replySign", ""),
+                        "clientName": c.get("clientName", ""),
+                        "lastMessage": last_msg.get("text", ""),
+                        "lastMessageTime": last_msg.get("addTimestamp"),
+                        "nmId": (c.get("goodCard") or {}).get("nmID"),
+                    })
+                return result
+            print(f"[WB API] chats: status={resp.status_code}, body={resp.text[:300]}")
     except Exception as e:
         print(f"[WB API] Error fetching chats: {e}")
     return []
 
 
-def fetch_chat_messages(api_token: str, chat_id: str) -> list:
-    """GET /api/v1/seller/events — fetch messages for a chat."""
+# In-memory cache for chat events: {token_hash: {"data": {chatID: [msgs]}, "ts": float}}
+_chat_events_cache = {}
+_CHAT_CACHE_TTL = 300  # 5 minutes
+
+
+def _load_all_events(api_token: str) -> dict[str, list]:
+    """Fetch all recent events (30 days) and group by chatID."""
+    import hashlib
+    token_hash = hashlib.md5(api_token.encode()).hexdigest()
+    now = time.time()
+
+    # Return cached if fresh
+    if token_hash in _chat_events_cache and now - _chat_events_cache[token_hash]["ts"] < _CHAT_CACHE_TTL:
+        return _chat_events_cache[token_hash]["data"]
+
     url = f"{CHAT_API}/api/v1/seller/events"
-    try:
-        _throttle()
-        with httpx.Client(timeout=30) as client:
-            resp = client.get(url, headers=_headers(api_token), params={"chatId": chat_id})
-            if resp.status_code == 200:
+    grouped = {}
+    next_cursor = int((now - 30 * 86400) * 1000)
+    now_ms = int(now * 1000)
+
+    for page in range(20):
+        try:
+            _throttle()
+            with httpx.Client(timeout=30) as client:
+                resp = client.get(url, headers=_headers(api_token), params={"next": next_cursor})
+                if resp.status_code != 200:
+                    break
                 data = resp.json()
-                return data if isinstance(data, list) else data.get("events", [])
-            print(f"[WB API] chat messages: status={resp.status_code}")
-    except Exception as e:
-        print(f"[WB API] Error fetching chat messages: {e}")
-    return []
+                result = data.get("result", {})
+                events = result.get("events", [])
+                next_cursor = result.get("next")
+
+                for e in events:
+                    cid = e.get("chatID", "")
+                    msg = e.get("message") or {}
+                    if cid:
+                        grouped.setdefault(cid, []).append({
+                            "text": msg.get("text", ""),
+                            "isSeller": e.get("sender") == "seller",
+                            "createdAt": e.get("addTimestamp"),
+                        })
+
+                if not next_cursor or not events or next_cursor > now_ms:
+                    break
+        except Exception as e:
+            print(f"[WB API] Error loading events page {page}: {e}")
+            break
+
+    # Sort each chat's messages by time
+    for cid in grouped:
+        grouped[cid].sort(key=lambda m: m.get("createdAt") or 0)
+
+    _chat_events_cache[token_hash] = {"data": grouped, "ts": now}
+    return grouped
 
 
-def send_chat_message(api_token: str, chat_id: str, text: str) -> dict:
-    """POST /api/v1/seller/message — send message in a chat."""
+def fetch_chat_messages(api_token: str, chat_id: str) -> list:
+    """Get messages for a specific chat from cached events."""
+    grouped = _load_all_events(api_token)
+    return grouped.get(chat_id, [])
+
+
+def send_chat_message(api_token: str, reply_sign: str, text: str) -> dict:
+    """POST /api/v1/seller/message — send message (multipart/form-data)."""
     url = f"{CHAT_API}/api/v1/seller/message"
     try:
         _throttle()
         with httpx.Client(timeout=30) as client:
-            resp = client.post(url, headers=_headers(api_token), json={
-                "chatId": chat_id, "message": text,
-            })
-            if resp.status_code == 200:
+            resp = client.post(
+                url,
+                headers={"Authorization": api_token},
+                data={"replySign": reply_sign, "message": text},
+            )
+            if 200 <= resp.status_code < 300:
                 return {"ok": True}
             return {"ok": False, "error": resp.text, "status": resp.status_code}
     except Exception as e:

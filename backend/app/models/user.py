@@ -29,7 +29,7 @@ class User(Base):
     shops = relationship("Shop", secondary=user_shops, lazy="selectin")
 
     # 全部可用模块
-    ALL_MODULES = ["dashboard", "orders", "products", "ads", "finance", "inventory", "shops", "commission_shipping"]
+    ALL_MODULES = ["dashboard", "orders", "products", "ads", "finance", "customer_service", "commission_shipping", "inventory", "shops"]
 
     def has_permission(self, module: str) -> bool:
         if self.role == "admin":
