@@ -143,31 +143,31 @@
           </template>
         </el-table-column>
         <el-table-column prop="sku" label="产品SKU" min-width="120" />
-        <el-table-column prop="total_spend" label="花费" min-width="100">
+        <el-table-column prop="total_spend" label="花费" min-width="110" sortable>
           <template #default="{ row }">₽{{ Math.round(row.total_spend)?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="total_views" label="展示" min-width="90">
+        <el-table-column prop="total_views" label="展示" min-width="100" sortable>
           <template #default="{ row }">{{ row.total_views?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="total_clicks" label="点击" min-width="80">
+        <el-table-column prop="total_clicks" label="点击" min-width="90" sortable>
           <template #default="{ row }">{{ row.total_clicks?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="total_orders" label="订单" min-width="70" />
-        <el-table-column prop="total_order_amount" label="订单金额" min-width="100">
+        <el-table-column prop="total_orders" label="订单" min-width="85" sortable />
+        <el-table-column prop="total_order_amount" label="订单金额" min-width="120" sortable>
           <template #default="{ row }">₽{{ Math.round(row.total_order_amount)?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="roas" label="广告占比" min-width="90">
+        <el-table-column prop="roas" label="广告占比" min-width="110" sortable>
           <template #default="{ row }">
             <span :style="{ color: adRatioColor(row.roas), fontWeight: 'bold' }">
               {{ fmtAdRatio(row.roas) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="overall_orders" label="总订单" min-width="70" />
-        <el-table-column prop="overall_order_amount" label="总订单金额" min-width="100">
+        <el-table-column prop="overall_orders" label="总订单" min-width="95" sortable />
+        <el-table-column prop="overall_order_amount" label="总订单金额" min-width="130" sortable>
           <template #default="{ row }">₽{{ Math.round(row.overall_order_amount)?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="overall_roas" label="总广告占比" min-width="90">
+        <el-table-column prop="overall_roas" label="总广告占比" min-width="120" sortable>
           <template #default="{ row }">
             <span :style="{ color: adRatioColor(row.overall_roas), fontWeight: 'bold' }">
               {{ fmtAdRatio(row.overall_roas) }}
