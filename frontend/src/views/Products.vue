@@ -9,7 +9,7 @@
     <el-table :data="products" stripe>
       <el-table-column label="图片" width="80" align="center">
         <template #default="{ row }">
-          <el-image v-if="row.image" :src="row.image" style="width: 50px; height: 50px; display: block; cursor: pointer" fit="contain" :preview-src-list="[row.image]" preview-teleported />
+          <el-image v-if="row.image" :src="imageUrl(row.image)" style="width: 50px; height: 50px; display: block; cursor: pointer" fit="contain" :preview-src-list="[imageUrl(row.image)]" preview-teleported />
           <span v-else style="color: #ccc">无图</span>
         </template>
       </el-table-column>
@@ -31,15 +31,16 @@
           <span v-else style="color: #ccc">-</span>
         </template>
       </el-table-column>
-      <el-table-column label="头程运费(实际)" align="center" min-width="130">
+      <el-table-column label="头程运费(实际)" align="center" min-width="110">
         <template #default="{ row }">
+          <span style="color: #606266; margin-right: 2px">¥</span>
           <el-input-number
             v-model="row.actual_shipping_cost"
             :min="0"
             :precision="2"
             :controls="false"
             size="small"
-            style="width: 100px"
+            style="width: 70px; font-size: 12px"
             @change="saveActualShipping(row)"
           />
         </template>
@@ -61,8 +62,8 @@
     <el-form :model="form" label-width="80px">
       <el-form-item label="商品SKU"><el-input v-model="form.sku" /></el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-      <el-form-item label="采购价"><el-input-number v-model="form.purchase_price" :min="0" :precision="2" /></el-form-item>
-      <el-form-item label="重量(kg)"><el-input-number v-model="form.weight" :min="0" :precision="3" :step="0.1" /></el-form-item>
+      <el-form-item label="采购价"><el-input-number v-model="form.purchase_price" :min="0" :precision="1" /></el-form-item>
+      <el-form-item label="重量(kg)"><el-input-number v-model="form.weight" :min="0" :precision="2" :step="0.01" /></el-form-item>
       <el-form-item label="长(cm)"><el-input-number v-model="form.length" :min="0" /></el-form-item>
       <el-form-item label="宽(cm)"><el-input-number v-model="form.width" :min="0" /></el-form-item>
       <el-form-item label="高(cm)"><el-input-number v-model="form.height" :min="0" /></el-form-item>
@@ -80,7 +81,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import api from '../api'
+import api, { imageUrl } from '../api'
 import ImageUploader from '../components/ImageUploader.vue'
 
 const products = ref([])
@@ -147,7 +148,7 @@ async function fetchProducts() {
 function openDialog(row) {
   if (row) {
     Object.assign(form, row)
-    imagePreview.value = row.image || ''
+    imagePreview.value = row.image ? imageUrl(row.image) : ''
   } else {
     Object.assign(form, defaultForm)
     imagePreview.value = ''
@@ -223,5 +224,8 @@ onMounted(() => {
 }
 :deep(.el-table .el-table__row) {
   height: 30px;
+}
+:deep(.el-input-number .el-input__inner) {
+  font-size: 12px;
 }
 </style>
