@@ -23,6 +23,7 @@ class ProductUpdate(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     actual_shipping_cost: Optional[float] = None
+    image: Optional[str] = None
 
 
 class ProductOut(BaseModel):

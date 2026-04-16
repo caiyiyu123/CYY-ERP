@@ -67,20 +67,7 @@
       <el-form-item label="宽(cm)"><el-input-number v-model="form.width" :min="0" /></el-form-item>
       <el-form-item label="高(cm)"><el-input-number v-model="form.height" :min="0" /></el-form-item>
       <el-form-item label="商品图片">
-        <el-upload
-          drag
-          :auto-upload="false"
-          :show-file-list="false"
-          accept="image/*"
-          :on-change="onImageChange"
-          style="width: 100%"
-        >
-          <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px">
-            <el-image v-if="imagePreview" :src="imagePreview" style="width: 50px; height: 50px; flex-shrink: 0; border-radius: 4px" fit="cover" />
-            <el-icon v-else style="font-size: 24px; color: #c0c4cc; flex-shrink: 0"><UploadFilled /></el-icon>
-            <span style="color: #999; font-size: 13px">{{ imagePreview ? '点击或拖拽替换图片' : '拖拽或点击上传图片' }}</span>
-          </div>
-        </el-upload>
+        <ImageUploader ref="imgUploaderRef" :model-value="imagePreview" @file-change="onImageFile" @remove="onImageRemove" />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -91,10 +78,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
 import api from '../api'
+import ImageUploader from '../components/ImageUploader.vue'
 
 const products = ref([])
 const shippingRates = ref([])
@@ -144,6 +131,8 @@ const defaultForm = { id: null, sku: '', name: '', purchase_price: 0, weight: 0,
 const form = reactive({ ...defaultForm })
 const pendingImage = ref(null)
 const imagePreview = ref('')
+const imgUploaderRef = ref(null)
+const imageRemoved = ref(false)
 
 async function fetchProducts() {
   try {
@@ -164,15 +153,18 @@ function openDialog(row) {
     imagePreview.value = ''
   }
   pendingImage.value = null
+  imageRemoved.value = false
   showDialog.value = true
 }
 
-function onImageChange(file) {
-  pendingImage.value = file.raw
-  if (imagePreview.value && imagePreview.value.startsWith('blob:')) {
-    URL.revokeObjectURL(imagePreview.value)
-  }
-  imagePreview.value = URL.createObjectURL(file.raw)
+function onImageFile(file) {
+  pendingImage.value = file
+  imageRemoved.value = false
+}
+
+function onImageRemove() {
+  pendingImage.value = null
+  imageRemoved.value = true
 }
 
 async function uploadImage(productId) {
@@ -196,6 +188,8 @@ async function saveProduct() {
     }
     if (pendingImage.value && productId) {
       await uploadImage(productId)
+    } else if (imageRemoved.value && productId) {
+      await api.put(`/api/products/${productId}`, { image: '' })
     }
     showDialog.value = false
     fetchProducts()
