@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Float, Integer, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Text, Float, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -15,7 +15,7 @@ class Product(Base):
     developer: Mapped[str] = mapped_column(String(50), default="")
     sku: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200), default="")
-    image: Mapped[str] = mapped_column(String(500), default="")
+    image: Mapped[str] = mapped_column(Text, default="")
     purchase_price: Mapped[float] = mapped_column(Float, default=0.0)
     weight: Mapped[float] = mapped_column(Float, default=0.0)
     length: Mapped[float] = mapped_column(Float, default=0.0)

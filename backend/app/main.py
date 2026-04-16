@@ -108,6 +108,13 @@ try:
             if "price_rub" not in sp_cols:
                 conn.execute(text("ALTER TABLE shop_products ADD COLUMN price_rub FLOAT DEFAULT 0.0"))
             conn.commit()
+        # Migrate products.image from VARCHAR to TEXT for base64 storage
+        if "products" in inspector.get_table_names():
+            prod_cols = {c["name"]: c for c in inspector.get_columns("products")}
+            if "image" in prod_cols and "varchar" in str(prod_cols["image"]["type"]).lower():
+                conn.execute(text("ALTER TABLE products ALTER COLUMN image TYPE TEXT"))
+                conn.commit()
+                print("[Migration] Changed products.image column to TEXT for base64 storage")
 except Exception as e:
     print(f"[Migration] Warning: {e}")
 

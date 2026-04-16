@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
-import shutil
-import uuid
+import base64
 
-from app.config import UPLOAD_DIR
 from app.database import get_db
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductUpdate, ProductOut
@@ -62,6 +60,9 @@ ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 
 
+MIME_MAP = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
+
+
 @router.post("/{product_id}/image", response_model=ProductOut)
 def upload_product_image(product_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_role("admin", "operator"))):
     product = db.query(Product).filter(Product.id == product_id).first()
@@ -80,11 +81,11 @@ def upload_product_image(product_id: int, file: UploadFile = File(...), db: Sess
     if file_size > MAX_IMAGE_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 5MB.")
 
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    filepath = UPLOAD_DIR / filename
-    with open(filepath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    product.image = f"/uploads/{filename}"
+    # Read file and convert to base64 data URL
+    content = file.file.read()
+    mime = MIME_MAP.get(ext, "image/jpeg")
+    b64 = base64.b64encode(content).decode("utf-8")
+    product.image = f"data:{mime};base64,{b64}"
     db.commit()
     db.refresh(product)
     return product
