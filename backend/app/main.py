@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import UPLOAD_DIR, CORS_ORIGINS
 from app.database import Base, engine
 import app.models  # noqa: F401
-from app.routers import auth, users, shops, products, sku_mappings, orders, inventory, finance, dashboard, ads, shop_products, customer_service, commission_shipping
+from app.routers import auth, users, shops, products, sku_mappings, orders, inventory, finance, dashboard, ads, shop_products, customer_service, commission_shipping, purchase_plan
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -22,8 +22,29 @@ try:
             conn.execute(text("ALTER TABLE users ADD COLUMN display_name VARCHAR(50) DEFAULT ''"))
             conn.commit()
             print("[Migration] Added display_name column to users table")
+        product_cols = [c["name"] for c in inspector.get_columns("products")]
+        if "actual_shipping_cost" not in product_cols:
+            conn.execute(text("ALTER TABLE products ADD COLUMN actual_shipping_cost FLOAT DEFAULT 0.0"))
+            conn.commit()
+            print("[Migration] Added actual_shipping_cost column to products table")
 except Exception as e:
     print(f"[Migration] Skipped: {e}")
+
+# Auto-migrate: convert product weight from g to kg (one-time)
+try:
+    from app.database import SessionLocal
+    from app.models.setting import SystemSetting
+    db_mig = SessionLocal()
+    flag = db_mig.query(SystemSetting).filter(SystemSetting.key == "weight_migrated_to_kg").first()
+    if not flag:
+        from sqlalchemy import text as _text
+        db_mig.execute(_text("UPDATE products SET weight = weight / 1000.0 WHERE weight > 0"))
+        db_mig.add(SystemSetting(key="weight_migrated_to_kg", value="1"))
+        db_mig.commit()
+        print("[Migration] Converted product weights from g to kg")
+    db_mig.close()
+except Exception as e:
+    print(f"[Migration] Weight conversion skipped: {e}")
 
 # Create default admin user if no users exist
 try:
@@ -115,6 +136,7 @@ app.include_router(ads.router)
 app.include_router(shop_products.router)
 app.include_router(customer_service.router)
 app.include_router(commission_shipping.router)
+app.include_router(purchase_plan.router)
 
 
 @app.get("/api/health")

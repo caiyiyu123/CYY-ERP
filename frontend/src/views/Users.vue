@@ -116,6 +116,7 @@ const allModules = [
   { value: 'dashboard', label: '仪表盘' },
   { value: 'orders', label: '订单管理' },
   { value: 'products', label: '商品管理' },
+  { value: 'purchase_plan', label: '采购计划' },
   { value: 'ads', label: '推广数据' },
   { value: 'finance', label: '财务管理' },
   { value: 'customer_service', label: '评价客服' },

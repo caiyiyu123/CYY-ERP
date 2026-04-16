@@ -90,7 +90,9 @@
                     <span style="font-weight: 600; font-size: 15px">{{ tpl.name }}</span>
                     <span style="color: #909399; font-size: 13px; margin-left: 8px">{{ tpl.date }}</span>
                   </div>
-                  <div style="display: flex; gap: 4px">
+                  <div style="display: flex; gap: 4px; align-items: center">
+                    <el-button v-if="defaultTemplateId === tpl.id" size="small" type="danger" round disabled style="cursor: default">默认模板</el-button>
+                    <el-button v-else size="small" type="primary" link @click="setDefaultTemplate(tpl.id)">设为默认</el-button>
                     <el-button size="small" link @click="copyTemplate(tpl)">复制</el-button>
                     <el-button size="small" link @click="openShippingDialog(tpl)">编辑</el-button>
                     <el-popconfirm title="确定删除该模板?" @confirm="deleteTemplate(tpl.id)">
@@ -246,6 +248,7 @@ const shippingTemplates = ref([])
 const loadingTemplates = ref(false)
 const showShippingDialog = ref(false)
 const shippingForm = reactive({ id: null, name: '', date: '', rates: [] })
+const defaultTemplateId = ref(null)
 
 async function fetchShippingTemplates() {
   loadingTemplates.value = true
@@ -254,6 +257,23 @@ async function fetchShippingTemplates() {
     shippingTemplates.value = data
   } catch { /* 无数据时静默 */ }
   finally { loadingTemplates.value = false }
+}
+
+async function fetchDefaultTemplate() {
+  try {
+    const { data } = await api.get('/api/shipping/default-template')
+    defaultTemplateId.value = data.id
+  } catch { /* ignore */ }
+}
+
+async function setDefaultTemplate(id) {
+  try {
+    await api.put(`/api/shipping/default-template/${id}`)
+    defaultTemplateId.value = id
+    ElMessage.success('已设为默认模板')
+  } catch {
+    ElMessage.error('设置失败')
+  }
 }
 
 function openShippingDialog(row) {
@@ -311,6 +331,7 @@ onMounted(() => {
   fetchCommissionRates()
   fetchCommissionInfo()
   fetchShippingTemplates()
+  fetchDefaultTemplate()
 })
 </script>
 

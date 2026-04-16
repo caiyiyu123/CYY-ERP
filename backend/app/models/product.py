@@ -20,6 +20,7 @@ class Product(Base):
     length: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[float] = mapped_column(Float, default=0.0)
     height: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_shipping_cost: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
     sku_mappings: Mapped[list["SkuMapping"]] = relationship(back_populates="product")

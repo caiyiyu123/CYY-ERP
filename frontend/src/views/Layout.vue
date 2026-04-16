@@ -28,6 +28,10 @@
           <el-icon><Goods /></el-icon>
           <span>商品管理</span>
         </el-menu-item>
+        <el-menu-item v-if="hasPerm('purchase_plan')" index="/purchase-plan">
+          <el-icon><DocumentChecked /></el-icon>
+          <span>采购计划</span>
+        </el-menu-item>
         <el-menu-item v-if="hasPerm('ads')" index="/ads">
           <el-icon><TrendCharts /></el-icon>
           <span>推广数据</span>
@@ -84,7 +88,7 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { DataAnalysis, Box, ShoppingCart, Goods, TrendCharts, Money, List, Shop, User, ChatDotRound, PriceTag } from '@element-plus/icons-vue'
+import { DataAnalysis, Box, ShoppingCart, Goods, TrendCharts, Money, List, Shop, User, ChatDotRound, PriceTag, DocumentChecked } from '@element-plus/icons-vue'
 import { APP_TITLE, APP_LOGO } from '../brand'
 
 const appTitle = APP_TITLE

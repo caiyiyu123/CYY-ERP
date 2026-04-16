@@ -11,6 +11,7 @@ class ProductCreate(BaseModel):
     length: float = 0.0
     width: float = 0.0
     height: float = 0.0
+    actual_shipping_cost: float = 0.0
 
 
 class ProductUpdate(BaseModel):
@@ -21,6 +22,7 @@ class ProductUpdate(BaseModel):
     length: Optional[float] = None
     width: Optional[float] = None
     height: Optional[float] = None
+    actual_shipping_cost: Optional[float] = None
 
 
 class ProductOut(BaseModel):
@@ -33,6 +35,7 @@ class ProductOut(BaseModel):
     length: float
     width: float
     height: float
+    actual_shipping_cost: float
     created_at: datetime
     updated_at: datetime
 

@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 
 from app.database import get_db
 from app.models.commission import CommissionTable, CommissionRate, ShippingTemplate, ShippingRate
+from app.models.setting import SystemSetting
 from app.utils.deps import require_module
 
 router = APIRouter(tags=["commission-shipping"])
@@ -262,5 +263,36 @@ def delete_shipping_template(
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
     db.delete(tpl)
+    # 如果删除的是默认模板，清除默认设置
+    s = db.query(SystemSetting).filter(SystemSetting.key == "default_shipping_template").first()
+    if s and s.value == str(tpl_id):
+        db.delete(s)
     db.commit()
     return {"detail": "Template deleted"}
+
+
+@router.get("/api/shipping/default-template")
+def get_default_template(
+    db: Session = Depends(get_db),
+    _=Depends(require_module("commission_shipping")),
+):
+    s = db.query(SystemSetting).filter(SystemSetting.key == "default_shipping_template").first()
+    return {"id": int(s.value) if s else None}
+
+
+@router.put("/api/shipping/default-template/{tpl_id}")
+def set_default_template(
+    tpl_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_module("commission_shipping")),
+):
+    tpl = db.query(ShippingTemplate).filter(ShippingTemplate.id == tpl_id).first()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    s = db.query(SystemSetting).filter(SystemSetting.key == "default_shipping_template").first()
+    if s:
+        s.value = str(tpl_id)
+    else:
+        db.add(SystemSetting(key="default_shipping_template", value=str(tpl_id)))
+    db.commit()
+    return {"id": tpl_id}

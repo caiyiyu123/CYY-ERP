@@ -6,5 +6,6 @@ from app.models.inventory import Inventory
 from app.models.ad import AdCampaign, AdDailyStat
 from app.models.setting import SystemSetting
 from app.models.commission import CommissionTable, CommissionRate, ShippingTemplate, ShippingRate
+from app.models.purchase_plan import PurchasePlan, PurchasePlanItem
 
-__all__ = ["User", "Shop", "Product", "SkuMapping", "Order", "OrderItem", "OrderStatusLog", "Inventory", "AdCampaign", "AdDailyStat", "SystemSetting", "CommissionTable", "CommissionRate", "ShippingTemplate", "ShippingRate"]
+__all__ = ["User", "Shop", "Product", "SkuMapping", "Order", "OrderItem", "OrderStatusLog", "Inventory", "AdCampaign", "AdDailyStat", "SystemSetting", "CommissionTable", "CommissionRate", "ShippingTemplate", "ShippingRate", "PurchasePlan", "PurchasePlanItem"]

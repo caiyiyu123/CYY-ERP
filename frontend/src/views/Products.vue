@@ -18,10 +18,32 @@
       <el-table-column prop="purchase_price" label="采购价" align="center" min-width="90">
         <template #default="{ row }">¥ {{ row.purchase_price }}</template>
       </el-table-column>
-      <el-table-column prop="weight" label="重量(g)" align="center" min-width="80" />
+      <el-table-column prop="weight" label="重量(kg)" align="center" min-width="80" />
       <el-table-column prop="length" label="长(cm)" align="center" min-width="70" />
       <el-table-column prop="width" label="宽(cm)" align="center" min-width="70" />
       <el-table-column prop="height" label="高(cm)" align="center" min-width="70" />
+      <el-table-column label="密度" align="center" min-width="80">
+        <template #default="{ row }">{{ calcDensity(row) }}</template>
+      </el-table-column>
+      <el-table-column label="头程运费(预估)" align="center" min-width="120">
+        <template #default="{ row }">
+          <span v-if="calcEstimatedShipping(row) !== '-'">¥ {{ calcEstimatedShipping(row) }}</span>
+          <span v-else style="color: #ccc">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="头程运费(实际)" align="center" min-width="130">
+        <template #default="{ row }">
+          <el-input-number
+            v-model="row.actual_shipping_cost"
+            :min="0"
+            :precision="2"
+            :controls="false"
+            size="small"
+            style="width: 100px"
+            @change="saveActualShipping(row)"
+          />
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="150" align="center">
         <template #default="{ row }">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
@@ -40,7 +62,7 @@
       <el-form-item label="商品SKU"><el-input v-model="form.sku" /></el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
       <el-form-item label="采购价"><el-input-number v-model="form.purchase_price" :min="0" :precision="2" /></el-form-item>
-      <el-form-item label="重量(g)"><el-input-number v-model="form.weight" :min="0" /></el-form-item>
+      <el-form-item label="重量(kg)"><el-input-number v-model="form.weight" :min="0" :precision="3" :step="0.1" /></el-form-item>
       <el-form-item label="长(cm)"><el-input-number v-model="form.length" :min="0" /></el-form-item>
       <el-form-item label="宽(cm)"><el-input-number v-model="form.width" :min="0" /></el-form-item>
       <el-form-item label="高(cm)"><el-input-number v-model="form.height" :min="0" /></el-form-item>
@@ -75,8 +97,50 @@ import { UploadFilled } from '@element-plus/icons-vue'
 import api from '../api'
 
 const products = ref([])
+const shippingRates = ref([])
+const usdToCny = ref(0)
+
+function calcDensity(row) {
+  const volume = (row.length || 0) * (row.width || 0) * (row.height || 0)
+  if (!volume || !row.weight) return '-'
+  return Math.round(row.weight * 1000000 / volume)
+}
+
+function calcEstimatedShipping(row) {
+  const density = calcDensity(row)
+  if (density === '-' || !shippingRates.value.length || !usdToCny.value) return '-'
+  const rate = shippingRates.value.find(r => density >= r.density_min && density <= r.density_max)
+  if (!rate) return '-'
+  return (rate.price_usd * usdToCny.value * row.weight).toFixed(2)
+}
+
+async function fetchShippingConfig() {
+  try {
+    const [tplRes, rateRes] = await Promise.all([
+      api.get('/api/shipping/default-template'),
+      api.get('/api/shops/exchange-rates'),
+    ])
+    const tplId = tplRes.data.id
+    if (tplId) {
+      const { data } = await api.get('/api/shipping/templates')
+      const tpl = data.find(t => t.id === tplId)
+      if (tpl) shippingRates.value = tpl.rates
+    }
+    const cnyUsd = rateRes.data.cny_usd || 0
+    usdToCny.value = cnyUsd ? parseFloat((1 / cnyUsd).toFixed(2)) : 0
+  } catch { /* ignore */ }
+}
+
+async function saveActualShipping(row) {
+  try {
+    await api.put(`/api/products/${row.id}`, { actual_shipping_cost: row.actual_shipping_cost || 0 })
+  } catch {
+    ElMessage.error('保存失败')
+  }
+}
+
 const showDialog = ref(false)
-const defaultForm = { id: null, sku: '', name: '', purchase_price: 0, weight: 0, length: 0, width: 0, height: 0 }
+const defaultForm = { id: null, sku: '', name: '', purchase_price: 0, weight: 0, length: 0, width: 0, height: 0, actual_shipping_cost: 0 }
 const form = reactive({ ...defaultForm })
 const pendingImage = ref(null)
 const imagePreview = ref('')
@@ -122,7 +186,7 @@ async function uploadImage(productId) {
 
 async function saveProduct() {
   try {
-    const payload = { sku: form.sku, name: form.name, purchase_price: form.purchase_price, weight: form.weight, length: form.length, width: form.width, height: form.height }
+    const payload = { sku: form.sku, name: form.name, purchase_price: form.purchase_price, weight: form.weight, length: form.length, width: form.width, height: form.height, actual_shipping_cost: form.actual_shipping_cost }
     let productId = form.id
     if (form.id) {
       await api.put(`/api/products/${form.id}`, payload)
@@ -153,7 +217,10 @@ async function deleteProduct(id) {
   }
 }
 
-onMounted(fetchProducts)
+onMounted(() => {
+  fetchProducts()
+  fetchShippingConfig()
+})
 </script>
 
 <style scoped>

@@ -26,7 +26,20 @@ def list_shops(db: Session = Depends(get_db), shop_ids: list[int] | None = Depen
 
 
 class ExchangeRateBody(BaseModel):
+    type: str = "cny_rub"
     rate: float
+
+
+RATE_KEYS = {"cny_rub": "exchange_rate_cny_rub", "cny_usd": "exchange_rate_cny_usd"}
+
+
+@router.get("/exchange-rates")
+def get_exchange_rates(db: Session = Depends(get_db), _=Depends(require_role("admin", "operator"))):
+    result = {}
+    for short, key in RATE_KEYS.items():
+        setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+        result[short] = float(setting.value) if setting else 0
+    return result
 
 
 @router.get("/exchange-rate")
@@ -38,11 +51,12 @@ def get_exchange_rate(db: Session = Depends(get_db), _=Depends(require_role("adm
 
 @router.put("/exchange-rate")
 def set_exchange_rate(body: ExchangeRateBody, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    setting = db.query(SystemSetting).filter(SystemSetting.key == "exchange_rate_cny_rub").first()
+    key = RATE_KEYS.get(body.type, "exchange_rate_cny_rub")
+    setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
     if setting:
         setting.value = str(body.rate)
     else:
-        setting = SystemSetting(key="exchange_rate_cny_rub", value=str(body.rate))
+        setting = SystemSetting(key=key, value=str(body.rate))
         db.add(setting)
     db.commit()
     return {"rate": body.rate}

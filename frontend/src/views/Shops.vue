@@ -38,11 +38,39 @@
 
   <el-card v-if="isAdmin" style="margin-top: 16px">
     <template #header><span>汇率设置</span></template>
-    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap">
-      <div style="text-align: center; line-height: 1.2"><span style="font-size: 15px; font-weight: bold">人民币兑卢布汇率</span><br><span style="color: #bbb; font-size: 12px">(对本土店使用)</span></div>
-      <el-input-number v-model="exchangeRate" :precision="2" :step="0.1" :min="0" style="width: 160px" />
-      <span style="color: #999; font-size: 13px">1 CNY = {{ exchangeRate }} RUB</span>
-      <el-button type="primary" size="small" @click="saveRate">保存</el-button>
+    <!-- 卢布汇率 -->
+    <div style="margin-bottom: 20px">
+      <div style="font-size: 15px; font-weight: bold; margin-bottom: 10px">卢布汇率 <span style="color: #bbb; font-size: 12px; font-weight: normal">(对本土店使用)</span></div>
+      <div style="display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap">
+        <div>
+          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">人民币 → 卢布</div>
+          <el-input-number :model-value="exchangeRate" :precision="2" :step="0.1" :min="0" style="width: 160px" @change="onRubCnyChange" />
+          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 CNY = {{ exchangeRate }} RUB</div>
+        </div>
+        <div>
+          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">卢布 → 人民币</div>
+          <el-input-number :model-value="exchangeRateRev" :precision="4" :step="0.001" :min="0" style="width: 160px" @change="onRubRevChange" />
+          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 RUB = {{ exchangeRateRev }} CNY</div>
+        </div>
+        <el-button type="primary" size="small" style="margin-top: 22px" @click="saveRate('cny_rub')">保存</el-button>
+      </div>
+    </div>
+    <!-- 美元汇率 -->
+    <div>
+      <div style="font-size: 15px; font-weight: bold; margin-bottom: 10px">美元汇率 <span style="color: #bbb; font-size: 12px; font-weight: normal">(对头程运费使用)</span></div>
+      <div style="display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap">
+        <div>
+          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">人民币 → 美元</div>
+          <el-input-number :model-value="exchangeRateUsd" :precision="4" :step="0.01" :min="0" style="width: 160px" @change="onUsdCnyChange" />
+          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 CNY = {{ exchangeRateUsd }} USD</div>
+        </div>
+        <div>
+          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">美元 → 人民币</div>
+          <el-input-number :model-value="exchangeRateUsdRev" :precision="2" :step="0.1" :min="0" style="width: 160px" @change="onUsdRevChange" />
+          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 USD = {{ exchangeRateUsdRev }} CNY</div>
+        </div>
+        <el-button type="primary" size="small" style="margin-top: 22px" @click="saveRate('cny_usd')">保存</el-button>
+      </div>
     </div>
   </el-card>
 
@@ -79,6 +107,26 @@ const syncing = ref(null)
 const defaultForm = { id: null, name: '', type: 'local', api_token: '' }
 const form = reactive({ ...defaultForm })
 const exchangeRate = ref(0)
+const exchangeRateRev = ref(0)
+const exchangeRateUsd = ref(0)
+const exchangeRateUsdRev = ref(0)
+
+function onRubCnyChange(val) {
+  exchangeRate.value = val
+  exchangeRateRev.value = val ? parseFloat((1 / val).toFixed(4)) : 0
+}
+function onRubRevChange(val) {
+  exchangeRateRev.value = val
+  exchangeRate.value = val ? parseFloat((1 / val).toFixed(2)) : 0
+}
+function onUsdCnyChange(val) {
+  exchangeRateUsd.value = val
+  exchangeRateUsdRev.value = val ? parseFloat((1 / val).toFixed(2)) : 0
+}
+function onUsdRevChange(val) {
+  exchangeRateUsdRev.value = val
+  exchangeRateUsd.value = val ? parseFloat((1 / val).toFixed(4)) : 0
+}
 
 function formatTime(dt) {
   if (!dt) return '-'
@@ -172,14 +220,18 @@ async function syncShop(id) {
 
 async function fetchExchangeRate() {
   try {
-    const { data } = await api.get('/api/shops/exchange-rate')
-    exchangeRate.value = data.rate || 0
+    const { data } = await api.get('/api/shops/exchange-rates')
+    exchangeRate.value = data.cny_rub || 0
+    exchangeRateRev.value = exchangeRate.value ? parseFloat((1 / exchangeRate.value).toFixed(4)) : 0
+    exchangeRateUsd.value = data.cny_usd || 0
+    exchangeRateUsdRev.value = exchangeRateUsd.value ? parseFloat((1 / exchangeRateUsd.value).toFixed(2)) : 0
   } catch {}
 }
 
-async function saveRate() {
+async function saveRate(type) {
   try {
-    await api.put('/api/shops/exchange-rate', { rate: exchangeRate.value })
+    const rate = type === 'cny_rub' ? exchangeRate.value : exchangeRateUsd.value
+    await api.put('/api/shops/exchange-rate', { type, rate })
     ElMessage.success('汇率已保存')
   } catch {
     ElMessage.error('保存失败')
