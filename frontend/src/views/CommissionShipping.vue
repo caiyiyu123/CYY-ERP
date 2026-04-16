@@ -23,57 +23,95 @@
               当前文件：{{ commissionInfo.filename }}（{{ commissionInfo.uploaded_at }}）
             </span>
           </div>
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索类目/商品名"
-            clearable
-            style="width: 240px"
-          />
+          <div style="display: flex; gap: 8px">
+            <el-input
+              v-model="searchCategory"
+              placeholder="搜索类目"
+              clearable
+              style="width: 180px"
+              @input="onSearchInput"
+            />
+            <el-input
+              v-model="searchProduct"
+              placeholder="搜索商品名"
+              clearable
+              style="width: 180px"
+              @input="onSearchInput"
+            />
+          </div>
         </div>
 
-        <el-table :data="filteredRates" stripe max-height="600" v-loading="loadingRates">
+        <el-table :data="commissionRates" stripe max-height="600" v-loading="loadingRates">
           <el-table-column prop="category" label="类目" min-width="180" />
           <el-table-column prop="product_name" label="商品名称" min-width="180" />
           <el-table-column
             v-if="platformTab !== 'ozon_local'"
-            prop="rate"
-            label="佣金率(%)"
+            label="佣金率"
             width="120"
             align="center"
-          />
+          >
+            <template #default="{ row }">{{ fmtRate(row.rate) }}</template>
+          </el-table-column>
           <el-table-column
             v-for="h in extraHeaders"
             :key="h"
-            :prop="h"
             :label="h"
             width="140"
             align="center"
-          />
+          >
+            <template #default="{ row }">{{ fmtRate(row[h]) }}</template>
+          </el-table-column>
         </el-table>
+        <div style="display: flex; justify-content: flex-end; margin-top: 12px">
+          <el-pagination
+            v-model:current-page="currentPage"
+            v-model:page-size="pageSize"
+            :total="totalRates"
+            :page-sizes="[50, 100, 200]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="fetchCommissionRates"
+            @size-change="onPageSizeChange"
+          />
+        </div>
       </el-tab-pane>
 
       <!-- ====== 头程运费 Tab ====== -->
       <el-tab-pane label="头程运费" name="shipping">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-          <span style="font-size: 16px; font-weight: 500">运费模板</span>
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 16px">
           <el-button type="primary" @click="openShippingDialog()">新增运费模板</el-button>
         </div>
 
-        <el-table :data="shippingTemplates" stripe v-loading="loadingTemplates">
-          <el-table-column prop="name" label="头程名称" min-width="160" />
-          <el-table-column prop="date" label="日期" width="130" align="center" />
-          <el-table-column prop="rate_count" label="区间数" width="100" align="center" />
-          <el-table-column label="操作" width="160" align="center">
-            <template #default="{ row }">
-              <el-button size="small" @click="openShippingDialog(row)">编辑</el-button>
-              <el-popconfirm title="确定删除该模板?" @confirm="deleteTemplate(row.id)">
-                <template #reference>
-                  <el-button size="small" type="danger">删除</el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div v-loading="loadingTemplates" style="display: flex; flex-wrap: wrap; gap: 12px">
+          <div v-for="tpl in shippingTemplates" :key="tpl.id" style="flex: 0 0 calc(33.333% - 8px); min-width: 280px">
+            <el-card shadow="hover" class="shipping-card">
+              <template #header>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0">
+                  <div>
+                    <span style="font-weight: 600; font-size: 15px">{{ tpl.name }}</span>
+                    <span style="color: #909399; font-size: 13px; margin-left: 8px">{{ tpl.date }}</span>
+                  </div>
+                  <div style="display: flex; gap: 4px">
+                    <el-button size="small" link @click="copyTemplate(tpl)">复制</el-button>
+                    <el-button size="small" link @click="openShippingDialog(tpl)">编辑</el-button>
+                    <el-popconfirm title="确定删除该模板?" @confirm="deleteTemplate(tpl.id)">
+                      <template #reference>
+                        <el-button size="small" link type="danger">删除</el-button>
+                      </template>
+                    </el-popconfirm>
+                  </div>
+                </div>
+              </template>
+              <el-table :data="tpl.rates" size="small" class="shipping-table">
+                <el-table-column prop="density_min" label="密度下限" align="center" />
+                <el-table-column prop="density_max" label="密度上限" align="center" />
+                <el-table-column label="运费(USD)" align="center">
+                  <template #default="{ row }"><span style="font-weight: 600">{{ row.price_usd }}</span></template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+          </div>
+          <el-empty v-if="!loadingTemplates && shippingTemplates.length === 0" description="暂无运费模板" style="width: 100%" />
+        </div>
       </el-tab-pane>
     </el-tabs>
   </el-card>
@@ -89,15 +127,22 @@
       </el-form-item>
       <el-form-item label="密度区间">
         <div style="width: 100%">
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; font-weight: 500; color: #606266; font-size: 13px">
+            <span style="width: 130px; text-align: center">密度下限</span>
+            <span style="width: 12px"></span>
+            <span style="width: 130px; text-align: center">密度上限</span>
+            <span style="width: 140px; text-align: center">运费 (USD)</span>
+            <span style="width: 32px"></span>
+          </div>
           <div
             v-for="(r, idx) in shippingForm.rates"
             :key="idx"
-            style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px"
+            style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px"
           >
-            <el-input-number v-model="r.density_min" :min="0" :precision="1" placeholder="下限" controls-position="right" style="width: 130px" />
+            <el-input-number v-model="r.density_min" :min="0" :precision="0" controls-position="right" style="width: 130px" />
             <span>~</span>
-            <el-input-number v-model="r.density_max" :min="0" :precision="1" placeholder="上限" controls-position="right" style="width: 130px" />
-            <el-input-number v-model="r.price_usd" :min="0" :precision="2" placeholder="运费USD" controls-position="right" style="width: 140px" />
+            <el-input-number v-model="r.density_max" :min="0" :precision="0" controls-position="right" style="width: 130px" />
+            <el-input-number v-model="r.price_usd" :min="0" :precision="1" controls-position="right" style="width: 140px" />
             <el-button :icon="Delete" circle size="small" @click="shippingForm.rates.splice(idx, 1)" />
           </div>
           <el-button type="primary" link @click="shippingForm.rates.push({ density_min: 0, density_max: 0, price_usd: 0 })">
@@ -114,36 +159,46 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import api from '../api'
 
+function fmtRate(val) {
+  if (val == null || val === 0) return ''
+  return (val * 100).toFixed(2).replace(/\.?0+$/, '') + '%'
+}
+
 // ==================== 佣金部分 ====================
 const mainTab = ref('commission')
 const platformTab = ref('wb_local')
-const searchKeyword = ref('')
+const searchCategory = ref('')
+const searchProduct = ref('')
 const commissionRates = ref([])
 const extraHeaders = ref([])
 const commissionInfo = reactive({ filename: null, uploaded_at: null })
 const loadingRates = ref(false)
-
-const filteredRates = computed(() => {
-  if (!searchKeyword.value) return commissionRates.value
-  const kw = searchKeyword.value.toLowerCase()
-  return commissionRates.value.filter(
-    r => r.category.toLowerCase().includes(kw) || r.product_name.toLowerCase().includes(kw)
-  )
-})
+const currentPage = ref(1)
+const pageSize = ref(50)
+const totalRates = ref(0)
+let searchTimer = null
 
 async function fetchCommissionRates() {
   loadingRates.value = true
   try {
-    const { data } = await api.get('/api/commission/rates', { params: { platform: platformTab.value } })
+    const { data } = await api.get('/api/commission/rates', {
+      params: { platform: platformTab.value, category: searchCategory.value, product: searchProduct.value, page: currentPage.value, page_size: pageSize.value }
+    })
     commissionRates.value = data.rates || []
     extraHeaders.value = data.headers || []
+    totalRates.value = data.total || 0
   } catch { ElMessage.error('加载佣金数据失败') }
   finally { loadingRates.value = false }
+}
+
+function onPageSizeChange() {
+  currentPage.value = 1
+  fetchCommissionRates()
 }
 
 async function fetchCommissionInfo() {
@@ -152,6 +207,14 @@ async function fetchCommissionInfo() {
     commissionInfo.filename = data.filename
     commissionInfo.uploaded_at = data.uploaded_at ? new Date(data.uploaded_at).toLocaleString('zh-CN') : null
   } catch { /* ignore */ }
+}
+
+function onSearchInput() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    currentPage.value = 1
+    fetchCommissionRates()
+  }, 400)
 }
 
 async function onFileSelected(file) {
@@ -171,7 +234,9 @@ async function onFileSelected(file) {
 }
 
 watch(platformTab, () => {
-  searchKeyword.value = ''
+  searchCategory.value = ''
+  searchProduct.value = ''
+  currentPage.value = 1
   fetchCommissionRates()
   fetchCommissionInfo()
 })
@@ -201,7 +266,7 @@ function openShippingDialog(row) {
     shippingForm.id = null
     shippingForm.name = ''
     shippingForm.date = ''
-    shippingForm.rates = [{ density_min: 0, density_max: 0, price_usd: 0 }]
+    shippingForm.rates = Array.from({ length: 20 }, () => ({ density_min: 0, density_max: 0, price_usd: 0 }))
   }
   showShippingDialog.value = true
 }
@@ -226,6 +291,14 @@ async function saveTemplate() {
   }
 }
 
+function copyTemplate(tpl) {
+  shippingForm.id = null
+  shippingForm.name = tpl.name + ' (副本)'
+  shippingForm.date = tpl.date
+  shippingForm.rates = tpl.rates.map(r => ({ ...r }))
+  showShippingDialog.value = true
+}
+
 async function deleteTemplate(id) {
   try {
     await api.delete(`/api/shipping/templates/${id}`)
@@ -240,3 +313,16 @@ onMounted(() => {
   fetchShippingTemplates()
 })
 </script>
+
+<style scoped>
+.shipping-card :deep(.el-card__header) {
+  padding: 10px 14px;
+}
+.shipping-card :deep(.el-card__body) {
+  padding: 0;
+}
+.shipping-table :deep(.el-table__cell) {
+  padding: 4px 0;
+  font-size: 14px;
+}
+</style>

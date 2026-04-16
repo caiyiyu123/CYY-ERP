@@ -109,27 +109,30 @@ def upload_commission(
 @router.get("/api/commission/rates")
 def list_commission_rates(
     platform: str = Query(...),
-    search: str = Query(""),
+    category: str = Query(""),
+    product: str = Query(""),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _=Depends(require_module("commission_shipping")),
 ):
     ct = db.query(CommissionTable).filter(CommissionTable.platform == platform).first()
     if not ct:
-        return {"rates": [], "headers": []}
+        return {"rates": [], "headers": [], "total": 0}
 
     q = db.query(CommissionRate).filter(CommissionRate.table_id == ct.id)
-    if search:
-        kw = f"%{search}%"
-        q = q.filter(
-            (CommissionRate.category.ilike(kw)) | (CommissionRate.product_name.ilike(kw))
-        )
-    rates = q.all()
+    if category:
+        q = q.filter(CommissionRate.category.ilike(f"%{category}%"))
+    if product:
+        q = q.filter(CommissionRate.product_name.ilike(f"%{product}%"))
 
-    # 提取动态列名
-    extra_keys = []
-    if rates:
-        first_extra = rates[0].extra_rates or {}
-        extra_keys = list(first_extra.keys())
+    total = q.count()
+
+    # 取第一条提取动态列名
+    first = q.first()
+    extra_keys = list((first.extra_rates or {}).keys()) if first else []
+
+    rates = q.offset((page - 1) * page_size).limit(page_size).all()
 
     result = []
     for r in rates:
@@ -144,7 +147,7 @@ def list_commission_rates(
             item[k] = extras.get(k, 0.0)
         result.append(item)
 
-    return {"rates": result, "headers": extra_keys}
+    return {"rates": result, "headers": extra_keys, "total": total}
 
 
 @router.get("/api/commission/info")
