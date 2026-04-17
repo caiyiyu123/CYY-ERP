@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 
 @router.get("", response_model=list[ProductOut])
 def list_products(db: Session = Depends(get_db), _=Depends(require_module("products"))):
-    return db.query(Product).all()
+    return db.query(Product).order_by(Product.sku).all()
 
 
 @router.get("/{product_id}", response_model=ProductOut)

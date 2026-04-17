@@ -17,7 +17,7 @@
       <el-table-column prop="sku" label="商品SKU" min-width="130" />
       <el-table-column prop="name" label="名称" min-width="150" />
       <el-table-column prop="purchase_price" label="采购价" align="center" min-width="90">
-        <template #default="{ row }">¥ {{ row.purchase_price }}</template>
+        <template #default="{ row }">¥ {{ parseFloat(Number(row.purchase_price).toFixed(2)) }}</template>
       </el-table-column>
       <el-table-column prop="weight" label="重量(kg)" align="center" min-width="80" />
       <el-table-column prop="length" label="长(cm)" align="center" min-width="70" />
@@ -26,19 +26,7 @@
       <el-table-column label="密度" align="center" min-width="80">
         <template #default="{ row }">{{ calcDensity(row) }}</template>
       </el-table-column>
-      <el-table-column label="装箱数" align="center" min-width="90">
-        <template #default="{ row }">
-          <el-input-number
-            v-model="row.packing_qty"
-            :min="0"
-            :precision="0"
-            :controls="false"
-            size="small"
-            style="width: 70px; font-size: 12px"
-            @change="savePackingQty(row)"
-          />
-        </template>
-      </el-table-column>
+      <el-table-column prop="packing_qty" label="装箱数" align="center" min-width="80" />
       <el-table-column label="头程运费(预估)" align="center" min-width="120">
         <template #default="{ row }">
           <span v-if="calcEstimatedShipping(row) !== '-'">¥ {{ calcEstimatedShipping(row) }}</span>
@@ -81,7 +69,7 @@
       </el-form-item>
       <el-form-item label="商品SKU"><el-input v-model="form.sku" /></el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-      <el-form-item label="采购价"><el-input-number v-model="form.purchase_price" :min="0" :precision="1" :controls="false" /></el-form-item>
+      <el-form-item label="采购价"><el-input-number v-model="form.purchase_price" :min="0" :precision="2" :controls="false" /></el-form-item>
       <el-form-item label="重量(kg)"><el-input-number v-model="form.weight" :min="0" :precision="2" :step="0.01" :controls="false" /></el-form-item>
       <el-form-item label="长(cm)"><el-input-number v-model="form.length" :min="0" :controls="false" /></el-form-item>
       <el-form-item label="宽(cm)"><el-input-number v-model="form.width" :min="0" :controls="false" /></el-form-item>
@@ -138,14 +126,6 @@ async function fetchShippingConfig() {
     const cnyUsd = rateRes.data.cny_usd || 0
     usdToCny.value = cnyUsd ? parseFloat((1 / cnyUsd).toFixed(2)) : 0
   } catch { /* ignore */ }
-}
-
-async function savePackingQty(row) {
-  try {
-    await api.put(`/api/products/${row.id}`, { packing_qty: row.packing_qty || 0 })
-  } catch {
-    ElMessage.error('保存失败')
-  }
 }
 
 async function saveActualShipping(row) {

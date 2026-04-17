@@ -27,7 +27,9 @@
       <el-table-column label="数量" width="80" align="center">
         <template #default="{ row }"><span style="font-weight: 600">{{ row.quantity }}</span></template>
       </el-table-column>
-      <el-table-column prop="boxes" label="箱数" width="80" align="center" />
+      <el-table-column label="箱数" width="80" align="center">
+        <template #default="{ row }">{{ row.boxes ? Math.ceil(row.quantity / row.boxes) : 0 }}</template>
+      </el-table-column>
       <el-table-column label="采购单价" width="100" align="center">
         <template #default="{ row }">¥ {{ row.unit_price?.toFixed(2) }}</template>
       </el-table-column>
