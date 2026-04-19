@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import UPLOAD_DIR, CORS_ORIGINS
 from app.database import Base, engine
 import app.models  # noqa: F401
-from app.routers import auth, users, shops, products, sku_mappings, orders, inventory, finance, dashboard, ads, shop_products, customer_service, commission_shipping, purchase_plan
+from app.routers import auth, users, shops, products, sku_mappings, orders, inventory, finance, dashboard, ads, shop_products, customer_service, commission_shipping, purchase_plan, ai_keys
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -152,6 +152,7 @@ app.include_router(shop_products.router)
 app.include_router(customer_service.router)
 app.include_router(commission_shipping.router)
 app.include_router(purchase_plan.router)
+app.include_router(ai_keys.router)
 
 
 @app.get("/api/health")

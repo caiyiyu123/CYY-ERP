@@ -1,78 +1,120 @@
 <template>
   <el-card>
-    <template #header>
-      <div style="display: flex; justify-content: space-between; align-items: center">
-        <span>店铺管理</span>
-        <el-button v-if="isAdmin" type="primary" @click="openDialog()">添加店铺</el-button>
-      </div>
-    </template>
-    <el-table :data="shops" stripe>
-      <el-table-column prop="name" label="店铺名称" />
-      <el-table-column prop="type" label="类型">
-        <template #default="{ row }">
-          <el-tag :type="row.type === 'local' ? 'success' : 'warning'">{{ row.type === 'local' ? '本土' : '跨境' }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="is_active" label="状态">
-        <template #default="{ row }">
-          <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? '启用' : '禁用' }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="最后同步">
-        <template #default="{ row }">{{ formatTime(row.last_sync_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="320">
-        <template #default="{ row }">
-          <el-button size="small" @click="openDialog(row)">编辑</el-button>
-          <el-button size="small" type="success" @click="$router.push(`/shops/${row.id}/sku-mappings`)">SKU关联</el-button>
-          <el-button size="small" type="warning" :loading="syncing === row.id" @click="syncShop(row.id)">同步</el-button>
-          <el-popconfirm v-if="isAdmin" title="确定删除该店铺？此操作不可恢复！" confirm-button-text="确认删除" cancel-button-text="取消" confirm-button-type="danger" @confirm="deleteShop(row.id)">
-            <template #reference>
-              <el-button size="small" type="danger">删除</el-button>
+    <el-tabs v-model="activeTab">
+      <el-tab-pane label="店铺管理" name="shops">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 12px">
+          <el-button v-if="isAdmin" type="primary" @click="openDialog()">添加店铺</el-button>
+        </div>
+        <el-table :data="shops" stripe>
+          <el-table-column prop="name" label="店铺名称" />
+          <el-table-column prop="type" label="类型">
+            <template #default="{ row }">
+              <el-tag :type="row.type === 'local' ? 'success' : 'warning'">{{ row.type === 'local' ? '本土' : '跨境' }}</el-tag>
             </template>
-          </el-popconfirm>
-        </template>
-      </el-table-column>
-    </el-table>
+          </el-table-column>
+          <el-table-column prop="is_active" label="状态">
+            <template #default="{ row }">
+              <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? '启用' : '禁用' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="最后同步">
+            <template #default="{ row }">{{ formatTime(row.last_sync_at) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="320">
+            <template #default="{ row }">
+              <el-button size="small" @click="openDialog(row)">编辑</el-button>
+              <el-button size="small" type="success" @click="$router.push(`/shops/${row.id}/sku-mappings`)">SKU关联</el-button>
+              <el-button size="small" type="warning" :loading="syncing === row.id" @click="syncShop(row.id)">同步</el-button>
+              <el-popconfirm v-if="isAdmin" title="确定删除该店铺？此操作不可恢复！" confirm-button-text="确认删除" cancel-button-text="取消" confirm-button-type="danger" @confirm="deleteShop(row.id)">
+                <template #reference>
+                  <el-button size="small" type="danger">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
+      <el-tab-pane v-if="isAdmin" label="汇率设置" name="rates">
+        <!-- 卢布汇率 -->
+        <div style="margin-bottom: 20px">
+          <div style="font-size: 15px; font-weight: bold; margin-bottom: 10px">卢布汇率 <span style="color: #bbb; font-size: 12px; font-weight: normal">(对本土店使用)</span></div>
+          <div style="display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap">
+            <div>
+              <div style="font-size: 13px; color: #606266; margin-bottom: 4px">人民币 → 卢布</div>
+              <el-input-number :model-value="exchangeRate" :precision="2" :step="0.1" :min="0" style="width: 160px" @change="onRubCnyChange" />
+              <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 CNY = {{ exchangeRate }} RUB</div>
+            </div>
+            <div>
+              <div style="font-size: 13px; color: #606266; margin-bottom: 4px">卢布 → 人民币</div>
+              <el-input-number :model-value="exchangeRateRev" :precision="4" :step="0.001" :min="0" style="width: 160px" @change="onRubRevChange" />
+              <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 RUB = {{ exchangeRateRev }} CNY</div>
+            </div>
+            <el-button type="primary" size="small" style="margin-top: 22px" @click="saveRate('cny_rub')">保存</el-button>
+          </div>
+        </div>
+        <!-- 美元汇率 -->
+        <div>
+          <div style="font-size: 15px; font-weight: bold; margin-bottom: 10px">美元汇率 <span style="color: #bbb; font-size: 12px; font-weight: normal">(对头程运费使用)</span></div>
+          <div style="display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap">
+            <div>
+              <div style="font-size: 13px; color: #606266; margin-bottom: 4px">人民币 → 美元</div>
+              <el-input-number :model-value="exchangeRateUsd" :precision="4" :step="0.01" :min="0" style="width: 160px" @change="onUsdCnyChange" />
+              <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 CNY = {{ exchangeRateUsd }} USD</div>
+            </div>
+            <div>
+              <div style="font-size: 13px; color: #606266; margin-bottom: 4px">美元 → 人民币</div>
+              <el-input-number :model-value="exchangeRateUsdRev" :precision="2" :step="0.1" :min="0" style="width: 160px" @change="onUsdRevChange" />
+              <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 USD = {{ exchangeRateUsdRev }} CNY</div>
+            </div>
+            <el-button type="primary" size="small" style="margin-top: 22px" @click="saveRate('cny_usd')">保存</el-button>
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane v-if="isAdmin" label="AI-API KEY" name="aikeys">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 12px">
+          <el-button type="primary" @click="openAiKeyDialog()">添加API KEY</el-button>
+        </div>
+        <el-table :data="aiKeys" stripe>
+          <el-table-column prop="name" label="名称" min-width="160" />
+          <el-table-column prop="model" label="模型" min-width="200" />
+          <el-table-column prop="api_key_masked" label="API KEY" min-width="200" />
+          <el-table-column label="创建时间" min-width="170">
+            <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="180">
+            <template #default="{ row }">
+              <el-button size="small" @click="openAiKeyDialog(row)">编辑</el-button>
+              <el-popconfirm title="确定删除？" @confirm="deleteAiKey(row.id)">
+                <template #reference>
+                  <el-button size="small" type="danger">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
   </el-card>
 
-  <el-card v-if="isAdmin" style="margin-top: 16px">
-    <template #header><span>汇率设置</span></template>
-    <!-- 卢布汇率 -->
-    <div style="margin-bottom: 20px">
-      <div style="font-size: 15px; font-weight: bold; margin-bottom: 10px">卢布汇率 <span style="color: #bbb; font-size: 12px; font-weight: normal">(对本土店使用)</span></div>
-      <div style="display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap">
-        <div>
-          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">人民币 → 卢布</div>
-          <el-input-number :model-value="exchangeRate" :precision="2" :step="0.1" :min="0" style="width: 160px" @change="onRubCnyChange" />
-          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 CNY = {{ exchangeRate }} RUB</div>
-        </div>
-        <div>
-          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">卢布 → 人民币</div>
-          <el-input-number :model-value="exchangeRateRev" :precision="4" :step="0.001" :min="0" style="width: 160px" @change="onRubRevChange" />
-          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 RUB = {{ exchangeRateRev }} CNY</div>
-        </div>
-        <el-button type="primary" size="small" style="margin-top: 22px" @click="saveRate('cny_rub')">保存</el-button>
-      </div>
-    </div>
-    <!-- 美元汇率 -->
-    <div>
-      <div style="font-size: 15px; font-weight: bold; margin-bottom: 10px">美元汇率 <span style="color: #bbb; font-size: 12px; font-weight: normal">(对头程运费使用)</span></div>
-      <div style="display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap">
-        <div>
-          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">人民币 → 美元</div>
-          <el-input-number :model-value="exchangeRateUsd" :precision="4" :step="0.01" :min="0" style="width: 160px" @change="onUsdCnyChange" />
-          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 CNY = {{ exchangeRateUsd }} USD</div>
-        </div>
-        <div>
-          <div style="font-size: 13px; color: #606266; margin-bottom: 4px">美元 → 人民币</div>
-          <el-input-number :model-value="exchangeRateUsdRev" :precision="2" :step="0.1" :min="0" style="width: 160px" @change="onUsdRevChange" />
-          <div style="color: #bbb; font-size: 12px; margin-top: 2px">1 USD = {{ exchangeRateUsdRev }} CNY</div>
-        </div>
-        <el-button type="primary" size="small" style="margin-top: 22px" @click="saveRate('cny_usd')">保存</el-button>
-      </div>
-    </div>
-  </el-card>
+  <el-dialog v-model="showAiKeyDialog" :title="aiKeyForm.id ? '编辑 API KEY' : '添加 API KEY'" width="500px">
+    <el-form :model="aiKeyForm" label-width="100px">
+      <el-form-item label="名称">
+        <el-input v-model="aiKeyForm.name" placeholder="请输入名称" />
+      </el-form-item>
+      <el-form-item label="模型">
+        <el-input v-model="aiKeyForm.model" placeholder="请输入模型名" />
+      </el-form-item>
+      <el-form-item label="API KEY">
+        <el-input v-model="aiKeyForm.api_key" type="password" show-password :placeholder="aiKeyForm.id ? '留空则不修改' : '请输入 API KEY'" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showAiKeyDialog = false">取消</el-button>
+      <el-button type="primary" @click="saveAiKey">保存</el-button>
+    </template>
+  </el-dialog>
 
   <el-dialog v-model="showDialog" :title="form.id ? '编辑店铺' : '添加店铺'" width="500px">
     <el-form :model="form" label-width="100px">
@@ -101,6 +143,7 @@ import api from '../api'
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 
+const activeTab = ref('shops')
 const shops = ref([])
 const showDialog = ref(false)
 const syncing = ref(null)
@@ -110,6 +153,11 @@ const exchangeRate = ref(0)
 const exchangeRateRev = ref(0)
 const exchangeRateUsd = ref(0)
 const exchangeRateUsdRev = ref(0)
+
+const aiKeys = ref([])
+const showAiKeyDialog = ref(false)
+const defaultAiKeyForm = { id: null, name: '', model: '', api_key: '' }
+const aiKeyForm = reactive({ ...defaultAiKeyForm })
 
 function onRubCnyChange(val) {
   exchangeRate.value = val
@@ -238,9 +286,61 @@ async function saveRate(type) {
   }
 }
 
+async function fetchAiKeys() {
+  try {
+    const { data } = await api.get('/api/ai-keys')
+    aiKeys.value = data
+  } catch {}
+}
+
+function openAiKeyDialog(row) {
+  if (row) {
+    Object.assign(aiKeyForm, { id: row.id, name: row.name, model: row.model, api_key: '' })
+  } else {
+    Object.assign(aiKeyForm, defaultAiKeyForm)
+  }
+  showAiKeyDialog.value = true
+}
+
+async function saveAiKey() {
+  if (!aiKeyForm.name || !aiKeyForm.model) {
+    ElMessage.warning('请填写名称和模型')
+    return
+  }
+  if (!aiKeyForm.id && !aiKeyForm.api_key) {
+    ElMessage.warning('请填写 API KEY')
+    return
+  }
+  try {
+    if (aiKeyForm.id) {
+      const payload = { name: aiKeyForm.name, model: aiKeyForm.model }
+      if (aiKeyForm.api_key) payload.api_key = aiKeyForm.api_key
+      await api.put(`/api/ai-keys/${aiKeyForm.id}`, payload)
+    } else {
+      await api.post('/api/ai-keys', { name: aiKeyForm.name, model: aiKeyForm.model, api_key: aiKeyForm.api_key })
+    }
+    showAiKeyDialog.value = false
+    fetchAiKeys()
+    ElMessage.success('保存成功')
+  } catch (e) {
+    ElMessage.error('保存失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function deleteAiKey(id) {
+  try {
+    await api.delete(`/api/ai-keys/${id}`)
+    fetchAiKeys()
+    ElMessage.success('删除成功')
+  } catch {
+    ElMessage.error('删除失败')
+  }
+}
+
 onMounted(() => {
   fetchShops()
   fetchExchangeRate()
+  if (isAdmin.value) fetchAiKeys()
 })
 
 onUnmounted(() => {
