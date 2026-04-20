@@ -139,3 +139,78 @@ def test_reconciliation_missing_in_finance(client, db):
     }, headers=headers)
     d = r.json()
     assert any(x["srid"] == "MISSING" for x in d["missing_in_finance"])
+
+
+def test_sync_endpoint_requires_admin(client, db):
+    from app.models.user import User
+    from app.utils.security import hash_password
+    op = User(username="op", password_hash=hash_password("pw"), role="operator",
+              is_active=True, permissions="finance")
+    db.add(op); db.commit()
+    r = client.post("/api/auth/login", data={"username": "op", "password": "pw"})
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    resp = client.post("/api/finance/sync", json={
+        "shop_ids": [1], "date_from": "2026-04-01", "date_to": "2026-04-07",
+    }, headers=headers)
+    assert resp.status_code == 403
+
+
+def test_sync_endpoint_creates_log(client, db, monkeypatch):
+    _setup_admin(db)
+    shop = _make_shop(db, "local")
+    # make sync_shop a no-op that only updates the log
+    def fake_sync(db_, shop_, *, date_from, date_to, triggered_by, user_id):
+        from app.models.finance import FinanceSyncLog
+        from datetime import datetime, timezone
+        log = FinanceSyncLog(shop_id=shop_.id, triggered_by=triggered_by, user_id=user_id,
+                             date_from=date_from, date_to=date_to, status="success",
+                             rows_fetched=0, orders_merged=0, other_fees_count=0,
+                             finished_at=datetime.now(timezone.utc))
+        db_.add(log); db_.commit()
+        return log
+    monkeypatch.setattr("app.routers.finance._sync_shop_blocking", fake_sync)
+
+    headers = _login(client)
+    r = client.post("/api/finance/sync", json={
+        "shop_ids": [shop.id], "date_from": "2026-04-01", "date_to": "2026-04-07",
+    }, headers=headers)
+    assert r.status_code == 200
+    assert len(r.json()["sync_log_ids"]) == 1
+
+
+def test_sync_logs_listing(client, db):
+    _setup_admin(db)
+    shop = _make_shop(db, "local")
+    from app.models.finance import FinanceSyncLog
+    log = FinanceSyncLog(shop_id=shop.id, triggered_by="manual", user_id=None,
+                         date_from=date(2026, 4, 1), date_to=date(2026, 4, 7),
+                         status="success", rows_fetched=10, orders_merged=3, other_fees_count=1)
+    db.add(log); db.commit()
+    headers = _login(client)
+    r = client.get("/api/finance/sync-logs", params={"shop_id": shop.id}, headers=headers)
+    d = r.json()
+    assert len(d) == 1
+    assert d[0]["rows_fetched"] == 10
+
+
+def test_recalc_profit_refreshes_records(client, db):
+    from app.models.product import Product, SkuMapping
+    _setup_admin(db)
+    shop = _make_shop(db, "local")
+    _make_record(db, shop, "R1", shop_sku="NEW-SKU", quantity=2,
+                 purchase_cost=0, has_sku_mapping=False, net_profit=100,
+                 net_to_seller=100, delivery_fee=0, fine=0, storage_fee=0, deduction=0)
+    product = Product(sku="P-NEW", purchase_price=15)
+    db.add(product); db.commit()
+    db.add(SkuMapping(shop_id=shop.id, shop_sku="NEW-SKU", product_id=product.id)); db.commit()
+
+    headers = _login(client)
+    r = client.post("/api/finance/recalc-profit", json={"shop_id": shop.id}, headers=headers)
+    assert r.status_code == 200
+
+    from app.models.finance import FinanceOrderRecord
+    rec = db.query(FinanceOrderRecord).filter_by(srid="R1").first()
+    db.refresh(rec)
+    assert rec.has_sku_mapping is True
+    assert rec.purchase_cost == 30.0
+    assert rec.net_profit == 70.0

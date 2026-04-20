@@ -1,16 +1,57 @@
 from datetime import date
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from concurrent.futures import ThreadPoolExecutor
+from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models.shop import Shop
 from app.models.order import Order
 from app.models.finance import FinanceOrderRecord, FinanceOtherFee, FinanceSyncLog
-from app.utils.deps import get_accessible_shop_ids, require_module
+from app.models.user import User
+from app.services.finance_sync import sync_shop, fill_purchase_cost_and_profit
+from app.utils.deps import get_accessible_shop_ids, require_module, get_current_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
+
+
+_sync_pool = ThreadPoolExecutor(max_workers=2)
+
+
+def _require_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return user
+
+
+def _sync_shop_blocking(db, shop, *, date_from, date_to, triggered_by, user_id):
+    """Indirection so tests can monkeypatch without touching the service module."""
+    return sync_shop(db, shop, date_from=date_from, date_to=date_to,
+                     triggered_by=triggered_by, user_id=user_id)
+
+
+def _sync_shop_in_background(shop_id: int, date_from: date, date_to: date, user_id: Optional[int]):
+    db = SessionLocal()
+    try:
+        shop = db.query(Shop).get(shop_id)
+        if not shop:
+            return
+        _sync_shop_blocking(db, shop, date_from=date_from, date_to=date_to,
+                            triggered_by="manual", user_id=user_id)
+    finally:
+        db.close()
+
+
+class SyncBody(BaseModel):
+    shop_ids: list[int]
+    date_from: date
+    date_to: date
+
+
+class RecalcBody(BaseModel):
+    shop_id: int
 
 
 def _currency_for(shop_type: str) -> str:
@@ -238,3 +279,97 @@ def finance_reconciliation(
     ]
 
     return {"missing_in_orders": missing_in_orders, "missing_in_finance": missing_in_finance}
+
+
+@router.post("/sync")
+def finance_sync(
+    body: SyncBody,
+    db: Session = Depends(get_db),
+    accessible_shops: Optional[list[int]] = Depends(get_accessible_shop_ids),
+    user: User = Depends(_require_admin),
+    _=Depends(require_module("finance")),
+):
+    if accessible_shops is not None:
+        body.shop_ids = [s for s in body.shop_ids if s in accessible_shops]
+    if not body.shop_ids:
+        raise HTTPException(status_code=400, detail="No accessible shops selected")
+
+    log_ids: list[int] = []
+    for sid in body.shop_ids:
+        log = FinanceSyncLog(
+            shop_id=sid, triggered_by="manual", user_id=user.id,
+            date_from=body.date_from, date_to=body.date_to, status="running",
+        )
+        db.add(log); db.commit()
+        log_ids.append(log.id)
+        _sync_pool.submit(_sync_shop_in_background, sid, body.date_from, body.date_to, user.id)
+
+    return {"sync_log_ids": log_ids}
+
+
+@router.get("/sync-logs")
+def finance_sync_logs(
+    ids: Optional[str] = Query(None, description="逗号分隔的 log id"),
+    shop_id: Optional[int] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    accessible_shops: Optional[list[int]] = Depends(get_accessible_shop_ids),
+    _=Depends(require_module("finance")),
+):
+    q = db.query(FinanceSyncLog)
+    if accessible_shops is not None:
+        q = q.filter(FinanceSyncLog.shop_id.in_(accessible_shops))
+    if ids:
+        id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+        q = q.filter(FinanceSyncLog.id.in_(id_list))
+    if shop_id:
+        q = q.filter(FinanceSyncLog.shop_id == shop_id)
+    q = q.order_by(FinanceSyncLog.started_at.desc()).limit(limit)
+
+    shops = {s.id: s.name for s in db.query(Shop).all()}
+    return [
+        {
+            "id": l.id, "shop_id": l.shop_id, "shop_name": shops.get(l.shop_id, ""),
+            "triggered_by": l.triggered_by, "status": l.status,
+            "date_from": l.date_from.isoformat(), "date_to": l.date_to.isoformat(),
+            "rows_fetched": l.rows_fetched, "orders_merged": l.orders_merged,
+            "other_fees_count": l.other_fees_count, "error_message": l.error_message,
+            "started_at": l.started_at.isoformat() if l.started_at else None,
+            "finished_at": l.finished_at.isoformat() if l.finished_at else None,
+        }
+        for l in q.all()
+    ]
+
+
+@router.post("/recalc-profit")
+def finance_recalc_profit(
+    body: RecalcBody,
+    db: Session = Depends(get_db),
+    accessible_shops: Optional[list[int]] = Depends(get_accessible_shop_ids),
+    _user: User = Depends(_require_admin),
+    _=Depends(require_module("finance")),
+):
+    if accessible_shops is not None and body.shop_id not in accessible_shops:
+        raise HTTPException(status_code=403, detail="No access to this shop")
+
+    records = db.query(FinanceOrderRecord).filter(
+        FinanceOrderRecord.shop_id == body.shop_id
+    ).all()
+    dicts = [
+        {
+            "shop_id": r.shop_id, "shop_sku": r.shop_sku, "quantity": r.quantity,
+            "net_to_seller": r.net_to_seller, "delivery_fee": r.delivery_fee,
+            "fine": r.fine, "storage_fee": r.storage_fee, "deduction": r.deduction,
+            "purchase_cost": 0.0, "net_profit": 0.0, "has_sku_mapping": False,
+            "_id": r.id,
+        }
+        for r in records
+    ]
+    fill_purchase_cost_and_profit(dicts, db, shop_id=body.shop_id)
+    for d in dicts:
+        rec = db.query(FinanceOrderRecord).get(d["_id"])
+        rec.purchase_cost = d["purchase_cost"]
+        rec.has_sku_mapping = d["has_sku_mapping"]
+        rec.net_profit = d["net_profit"]
+    db.commit()
+    return {"updated": len(dicts)}
