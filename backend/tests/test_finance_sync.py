@@ -102,3 +102,73 @@ def test_fetch_finance_report_handles_429():
 
     assert rows == []
     assert mock_sleep.called
+
+
+def test_merge_rows_by_srid_combines_three_rows():
+    """同一 Srid 的 销售行/物流行/退货行 合并成 1 条订单记录。"""
+    from app.services.finance_sync import merge_rows_by_srid
+
+    rows = [
+        {
+            "srid": "S1", "supplier_oper_name": "Продажа",
+            "order_dt": "2026-04-08T10:00:00", "sale_dt": "2026-04-13T10:00:00",
+            "nm_id": 507336942, "sa_name": "SKU-1",
+            "subject_name": "其他", "brand_name": "", "ts_name": "0", "barcode": "BC1",
+            "quantity": 1, "retail_price": 100.0, "retail_amount": 96.47,
+            "commission_percent": 9.5, "ppvz_vw": 5.3, "ppvz_vw_nds": 1.16,
+            "ppvz_for_pay": 90.01, "delivery_rub": 0,
+            "office_name": "Маркетплейс", "site_country": "RU", "srv_dbs": "FBS",
+            "penalty": 0, "storage_fee": 0, "deduction": 0,
+            "rr_dt": "2026-04-14",
+        },
+        {
+            "srid": "S1", "supplier_oper_name": "Логистика",
+            "order_dt": "2026-04-08T10:00:00", "sale_dt": "2026-04-13T10:00:00",
+            "nm_id": 507336942, "sa_name": "SKU-1",
+            "quantity": 0, "delivery_rub": 13.04, "ppvz_for_pay": 0,
+            "penalty": 0, "storage_fee": 0, "deduction": 0,
+            "rr_dt": "2026-04-14",
+        },
+        {
+            "srid": "S1", "supplier_oper_name": "Возврат",
+            "order_dt": "2026-04-08T10:00:00", "sale_dt": "2026-04-13T10:00:00",
+            "quantity": 1, "retail_price": 100.0, "ppvz_for_pay": 0,
+            "penalty": 0, "storage_fee": 0, "deduction": 0,
+            "rr_dt": "2026-04-14",
+        },
+    ]
+    merged = merge_rows_by_srid(rows, shop_id=1, currency="CNY",
+                                period_start=None, period_end=None)
+    assert len(merged) == 1
+    rec = merged[0]
+    assert rec["srid"] == "S1"
+    assert rec["shop_id"] == 1
+    assert rec["currency"] == "CNY"
+    assert rec["quantity"] == 1
+    assert rec["sold_price"] == 96.47
+    assert rec["net_to_seller"] == 90.01
+    assert rec["delivery_fee"] == 13.04
+    assert rec["commission_amount"] == 5.3 + 1.16
+    assert rec["has_return_row"] is True
+    assert rec["return_quantity"] == 1
+
+
+def test_merge_accumulates_fees_across_rows():
+    """多行费用（多条物流、罚款）累加。"""
+    from app.services.finance_sync import merge_rows_by_srid
+
+    rows = [
+        {"srid": "S2", "supplier_oper_name": "Продажа", "ppvz_for_pay": 50, "quantity": 1,
+         "penalty": 0, "storage_fee": 0, "deduction": 0, "delivery_rub": 0, "sale_dt": "2026-04-13"},
+        {"srid": "S2", "supplier_oper_name": "Логистика", "delivery_rub": 10,
+         "penalty": 0, "storage_fee": 0, "deduction": 0, "ppvz_for_pay": 0, "quantity": 0, "sale_dt": "2026-04-13"},
+        {"srid": "S2", "supplier_oper_name": "Логистика", "delivery_rub": 5,
+         "penalty": 0, "storage_fee": 0, "deduction": 0, "ppvz_for_pay": 0, "quantity": 0, "sale_dt": "2026-04-13"},
+        {"srid": "S2", "supplier_oper_name": "Штраф", "penalty": 20,
+         "storage_fee": 0, "deduction": 0, "delivery_rub": 0, "ppvz_for_pay": 0, "quantity": 0, "sale_dt": "2026-04-13"},
+    ]
+    merged = merge_rows_by_srid(rows, shop_id=1, currency="RUB",
+                                period_start=None, period_end=None)
+    assert len(merged) == 1
+    assert merged[0]["delivery_fee"] == 15
+    assert merged[0]["fine"] == 20
