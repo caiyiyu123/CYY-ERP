@@ -136,6 +136,25 @@
         <el-empty description="暂无店铺数据" />
       </el-col>
     </el-row>
+
+    <!-- 商品销量排行 -->
+    <div v-if="viewMode === 'products'" v-loading="loading.products">
+      <el-table
+        :data="productList"
+        stripe
+        max-height="560"
+        default-sort="{ prop: 'today_orders', order: 'descending' }"
+        @row-click="openProduct"
+        style="cursor: pointer"
+      >
+        <el-table-column prop="product_name" label="商品名" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="today_orders" label="今日订单数" width="130" sortable align="right" />
+        <el-table-column prop="yesterday_orders" label="昨日订单数" width="130" sortable align="right" />
+        <el-table-column prop="last_7d_orders" label="近7天订单数" width="140" sortable align="right" />
+        <el-table-column prop="last_30d_orders" label="近30天订单数" width="140" sortable align="right" />
+      </el-table>
+      <el-empty v-if="!loading.products && productList.length === 0" description="该店铺暂无商品订单数据" />
+    </div>
   </div>
 </template>
 
@@ -192,7 +211,22 @@ async function openShop(shop) {
   currentShop.value = { id: shop.id, name: shop.name }
   productList.value = []
   viewMode.value = 'products'
-  // Task 5 will populate productList
+  loading.value.products = true
+  try {
+    const { data } = await api.get(`/api/dashboard/shops/${shop.id}/products`)
+    productList.value = data.products
+  } catch (e) {
+    const msg = e?.response?.status === 403 ? '无权访问该店铺' : '商品数据加载失败'
+    ElMessage.error(msg)
+    viewMode.value = 'shops'
+  } finally {
+    loading.value.products = false
+  }
+}
+
+function openProduct(row) {
+  currentProduct.value = { nm_id: row.nm_id, name: row.product_name }
+  viewMode.value = 'detail'
 }
 
 const chartOption = computed(() => {
