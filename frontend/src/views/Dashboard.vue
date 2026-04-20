@@ -157,7 +157,7 @@
     </div>
 
     <!-- 商品每日详情 -->
-    <div v-if="viewMode === 'detail'" v-loading="loading.daily">
+    <div v-if="viewMode === 'detail'" v-loading="loading.daily && dailyData.length === 0">
       <el-card class="ts-chart-card">
         <template #header>
           <span class="ts-chart-title">{{ currentProduct?.name }} · 每日订单数</span>
@@ -204,7 +204,6 @@ const currentProduct = ref(null)      // { nm_id, name }
 const shopCards = ref([])
 const productList = ref([])
 const dailyData = ref([])             // [{ date, orders }]
-const dailyEndDate = ref(null)
 const loading = ref({ shops: false, products: false, daily: false })
 
 async function fetchShopCards() {
@@ -249,9 +248,7 @@ async function openProduct(row) {
   currentProduct.value = { nm_id: row.nm_id, name: row.product_name }
   viewMode.value = 'detail'
   dailyData.value = []
-  const mskNow = new Date(Date.now() + 3 * 60 * 60 * 1000 - new Date().getTimezoneOffset() * 60 * 1000)
-  const today = mskNow.toISOString().slice(0, 10)
-  dailyEndDate.value = today
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
   await loadDaily(row.nm_id, today, 7, false)
 }
 
@@ -278,11 +275,11 @@ async function loadDaily(nmId, endDate, days, prepend) {
 
 async function loadMore() {
   if (!dailyData.value.length) return
+  if (loading.value.daily) return
   const earliest = dailyData.value[0].date
   const d = new Date(earliest + 'T00:00:00Z')
   d.setUTCDate(d.getUTCDate() - 1)
   const newEndDate = d.toISOString().slice(0, 10)
-  dailyEndDate.value = newEndDate
   await loadDaily(currentProduct.value.nm_id, newEndDate, 7, true)
 }
 
