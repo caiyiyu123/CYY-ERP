@@ -280,3 +280,105 @@ def test_fill_purchase_cost_mapping_without_product(db):
     fill_purchase_cost_and_profit(records, db, shop_id=shop.id)
     assert records[0]["purchase_cost"] == 0
     assert records[0]["has_sku_mapping"] is False
+
+
+def test_sync_shop_end_to_end(db, monkeypatch):
+    """完整链路：mock WB API → 合并 → 存库 → 返回 sync_log。"""
+    from datetime import date
+    from app.models.shop import Shop
+    from app.models.product import Product, SkuMapping
+    from app.models.finance import FinanceOrderRecord, FinanceOtherFee, FinanceSyncLog
+    from app.utils.security import encrypt_token
+    from app.services import finance_sync
+
+    shop = Shop(name="S", type="local", api_token=encrypt_token("tok"), is_active=True)
+    db.add(shop); db.commit()
+    product = Product(sku="P1", purchase_price=10.0)
+    db.add(product); db.commit()
+    db.add(SkuMapping(shop_id=shop.id, shop_sku="SKU-A", product_id=product.id)); db.commit()
+
+    fake_rows = [
+        {"srid": "X1", "supplier_oper_name": "Продажа",
+         "order_dt": "2026-04-08", "sale_dt": "2026-04-13",
+         "nm_id": 1, "sa_name": "SKU-A", "quantity": 2,
+         "retail_price": 100, "retail_amount": 95, "commission_percent": 10,
+         "ppvz_vw": 5, "ppvz_vw_nds": 1, "ppvz_for_pay": 89,
+         "delivery_rub": 0, "penalty": 0, "storage_fee": 0, "deduction": 0},
+        {"srid": "X1", "supplier_oper_name": "Логистика",
+         "sale_dt": "2026-04-13", "delivery_rub": 12,
+         "ppvz_for_pay": 0, "penalty": 0, "storage_fee": 0, "deduction": 0, "quantity": 0},
+        {"srid": "", "supplier_oper_name": "Хранение", "sale_dt": "2026-04-10",
+         "storage_fee": 200, "ppvz_for_pay": 0, "delivery_rub": 0, "penalty": 0, "deduction": 0},
+    ]
+    monkeypatch.setattr(finance_sync, "fetch_finance_report", lambda token, df, dt: fake_rows)
+
+    log = finance_sync.sync_shop(
+        db, shop,
+        date_from=date(2026, 4, 6), date_to=date(2026, 4, 12),
+        triggered_by="manual", user_id=None,
+    )
+
+    db.refresh(log)
+    assert log.status == "success"
+    assert log.rows_fetched == 3
+    assert log.orders_merged == 1
+    assert log.other_fees_count == 1
+
+    orders = db.query(FinanceOrderRecord).filter_by(shop_id=shop.id).all()
+    assert len(orders) == 1
+    o = orders[0]
+    assert o.srid == "X1"
+    assert o.currency == "RUB"
+    assert o.delivery_fee == 12
+    assert o.purchase_cost == 20.0      # 10 × 2
+    assert o.has_sku_mapping is True
+    # 89 - 12 - 20 = 57
+    assert abs(o.net_profit - 57.0) < 0.01
+
+    fees = db.query(FinanceOtherFee).filter_by(shop_id=shop.id).all()
+    assert len(fees) == 1
+    assert fees[0].fee_type == "storage"
+    assert fees[0].amount == 200
+
+
+def test_sync_shop_idempotent(db, monkeypatch):
+    """同区间重拉两次 → 记录数不变（delete-then-insert）。"""
+    from datetime import date
+    from app.models.shop import Shop
+    from app.models.finance import FinanceOrderRecord
+    from app.utils.security import encrypt_token
+    from app.services import finance_sync
+
+    shop = Shop(name="S", type="local", api_token=encrypt_token("t"), is_active=True)
+    db.add(shop); db.commit()
+    rows = [{
+        "srid": "Y1", "supplier_oper_name": "Продажа", "sale_dt": "2026-04-13",
+        "ppvz_for_pay": 50, "quantity": 1, "delivery_rub": 0,
+        "penalty": 0, "storage_fee": 0, "deduction": 0,
+    }]
+    monkeypatch.setattr(finance_sync, "fetch_finance_report", lambda *a, **kw: rows)
+
+    finance_sync.sync_shop(db, shop, date_from=date(2026, 4, 6), date_to=date(2026, 4, 12),
+                           triggered_by="cron", user_id=None)
+    finance_sync.sync_shop(db, shop, date_from=date(2026, 4, 6), date_to=date(2026, 4, 12),
+                           triggered_by="cron", user_id=None)
+    assert db.query(FinanceOrderRecord).count() == 1
+
+
+def test_sync_shop_cross_border_currency_cny(db, monkeypatch):
+    from datetime import date
+    from app.models.shop import Shop
+    from app.models.finance import FinanceOrderRecord
+    from app.utils.security import encrypt_token
+    from app.services import finance_sync
+
+    shop = Shop(name="CB", type="cross_border", api_token=encrypt_token("t"), is_active=True)
+    db.add(shop); db.commit()
+    rows = [{"srid": "Z1", "supplier_oper_name": "Продажа", "sale_dt": "2026-04-13",
+             "ppvz_for_pay": 90, "quantity": 1, "delivery_rub": 0,
+             "penalty": 0, "storage_fee": 0, "deduction": 0}]
+    monkeypatch.setattr(finance_sync, "fetch_finance_report", lambda *a, **kw: rows)
+    finance_sync.sync_shop(db, shop, date_from=date(2026, 4, 6), date_to=date(2026, 4, 12),
+                           triggered_by="cron", user_id=None)
+    rec = db.query(FinanceOrderRecord).first()
+    assert rec.currency == "CNY"

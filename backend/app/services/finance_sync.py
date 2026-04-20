@@ -11,6 +11,9 @@ from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Optional
 
+from app.services.wb_api import fetch_finance_report
+from app.utils.security import decrypt_token
+
 
 def _parse_date(value) -> Optional[date]:
     if not value:
@@ -203,3 +206,64 @@ def fill_purchase_cost_and_profit(records: list[dict], db, shop_id: int) -> None
             - r.get("deduction", 0)
             - r["purchase_cost"]
         )
+
+
+def sync_shop(db, shop, *, date_from: date, date_to: date,
+              triggered_by: str, user_id: Optional[int]) -> "FinanceSyncLog":
+    """Full pipeline for one shop. Returns the FinanceSyncLog row (detached)."""
+    from app.models.finance import FinanceOrderRecord, FinanceOtherFee, FinanceSyncLog
+
+    log = FinanceSyncLog(
+        shop_id=shop.id, triggered_by=triggered_by, user_id=user_id,
+        date_from=date_from, date_to=date_to, status="running",
+    )
+    db.add(log); db.commit()
+
+    try:
+        token = decrypt_token(shop.api_token)
+        rows = fetch_finance_report(
+            token, date_from.strftime("%Y-%m-%d"), date_to.strftime("%Y-%m-%d")
+        )
+        currency = "CNY" if shop.type == "cross_border" else "RUB"
+
+        merged = merge_rows_by_srid(
+            rows, shop_id=shop.id, currency=currency,
+            period_start=date_from, period_end=date_to,
+        )
+        fill_purchase_cost_and_profit(merged, db, shop_id=shop.id)
+
+        other_fees = extract_other_fees(
+            rows, shop_id=shop.id, currency=currency,
+            period_start=date_from, period_end=date_to,
+        )
+
+        # Idempotent: delete existing rows within the date window
+        db.query(FinanceOrderRecord).filter(
+            FinanceOrderRecord.shop_id == shop.id,
+            FinanceOrderRecord.sale_date >= date_from,
+            FinanceOrderRecord.sale_date <= date_to,
+        ).delete(synchronize_session=False)
+        db.query(FinanceOtherFee).filter(
+            FinanceOtherFee.shop_id == shop.id,
+            FinanceOtherFee.sale_date >= date_from,
+            FinanceOtherFee.sale_date <= date_to,
+        ).delete(synchronize_session=False)
+
+        for rec in merged:
+            db.add(FinanceOrderRecord(**rec))
+        for fee in other_fees:
+            db.add(FinanceOtherFee(**fee))
+
+        log.status = "success"
+        log.rows_fetched = len(rows)
+        log.orders_merged = len(merged)
+        log.other_fees_count = len(other_fees)
+        log.finished_at = datetime.now(timezone.utc)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log.status = "failed"
+        log.error_message = str(e)[:2000]
+        log.finished_at = datetime.now(timezone.utc)
+        db.commit()
+    return log
