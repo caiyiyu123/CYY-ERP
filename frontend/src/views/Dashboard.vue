@@ -143,9 +143,9 @@
         :data="productList"
         stripe
         max-height="560"
-        default-sort="{ prop: 'today_orders', order: 'descending' }"
+        :default-sort="{ prop: 'today_orders', order: 'descending' }"
         @row-click="openProduct"
-        style="cursor: pointer"
+        class="ts-product-table"
       >
         <el-table-column prop="product_name" label="商品名" min-width="260" show-overflow-tooltip />
         <el-table-column prop="today_orders" label="今日订单数" width="130" sortable align="right" />
@@ -431,5 +431,9 @@ onMounted(async () => {
 .ts-shop-metric-value {
   font-weight: 600;
   color: var(--ts-text-heading);
+}
+
+.ts-product-table :deep(.el-table__row) {
+  cursor: pointer;
 }
 </style>
