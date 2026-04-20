@@ -59,7 +59,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../../api'
 import FinanceSummaryCards from './FinanceSummaryCards.vue'
@@ -147,6 +147,9 @@ onMounted(() => {
   fetchShops()
   fetchSummary()
 })
+
+window.addEventListener('finance-sync-done', reloadAll)
+onUnmounted(() => window.removeEventListener('finance-sync-done', reloadAll))
 </script>
 
 <style scoped>
