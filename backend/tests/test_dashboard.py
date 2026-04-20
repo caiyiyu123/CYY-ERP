@@ -10,7 +10,7 @@ def _setup(client, db):
     shop = Shop(name="店铺A", type="local", api_token=encrypt_token("tok"), is_active=True)
     db.add_all([user, shop])
     db.commit()
-    order = Order(wb_order_id="WB-001", shop_id=shop.id, order_type="FBS", status="pending", total_price=2350.0)
+    order = Order(wb_order_id="WB-001", shop_id=shop.id, order_type="FBS", status="pending", total_price=2350.0, price_rub=2350.0)
     db.add(order)
     db.commit()
     item = OrderItem(order_id=order.id, product_name="鞋子", sku="WB-SKU-1", quantity=1, price=2350.0, commission=235.0, logistics_cost=150.0)
@@ -46,9 +46,9 @@ def test_dashboard_shops_returns_cards(client, db):
     card = data["shops"][0]
     assert card["name"] == "店铺A"
     assert card["id"] > 0
-    assert "today_orders" in card
-    assert "today_sales" in card
-    assert "last_30d_sales" in card
+    assert card["today_orders"] == 1
+    assert card["today_sales"] == 2350.0
+    assert card["last_30d_sales"] == 2350.0
 
 
 def test_dashboard_shops_includes_shops_without_orders(client, db):
