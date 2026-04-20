@@ -949,3 +949,51 @@ def send_chat_message(api_token: str, reply_sign: str, text: str) -> dict:
             return {"ok": False, "error": resp.text, "status": resp.status_code}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+STATISTICS_API_FINANCE_PATH = "/api/v5/supplier/reportDetailByPeriod"
+_FINANCE_BACKOFF_INITIAL = 60   # seconds
+_FINANCE_BACKOFF_MAX = 300
+_FINANCE_MAX_RETRIES = 3
+
+
+def fetch_finance_report(api_token: str, date_from: str, date_to: str) -> list[dict]:
+    """GET /api/v5/supplier/reportDetailByPeriod — paginated by rrdid.
+
+    Returns all rows in the given date range. Handles 429 with exponential backoff.
+
+    Args:
+        api_token: plaintext WB token
+        date_from, date_to: "YYYY-MM-DD"
+    """
+    url = f"{STATISTICS_API}{STATISTICS_API_FINANCE_PATH}"
+    rows: list[dict] = []
+    rrdid = 0
+    while True:
+        _throttle()
+        backoff = _FINANCE_BACKOFF_INITIAL
+        retries = 0
+        with httpx.Client(timeout=120) as client:
+            while True:
+                resp = client.get(
+                    url,
+                    params={"dateFrom": date_from, "dateTo": date_to, "rrdid": rrdid, "limit": 100000},
+                    headers=_headers(api_token),
+                    timeout=120,
+                )
+                if resp.status_code == 429 and retries < _FINANCE_MAX_RETRIES:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, _FINANCE_BACKOFF_MAX)
+                    retries += 1
+                    continue
+                break
+        if resp.status_code != 200:
+            raise RuntimeError(f"WB finance report failed: {resp.status_code} {resp.text[:200]}")
+        page = resp.json() or []
+        if not page:
+            break
+        rows.extend(page)
+        rrdid = page[-1].get("rrd_id", 0)
+        if not rrdid:
+            break
+    return rows

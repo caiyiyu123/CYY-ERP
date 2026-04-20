@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from unittest.mock import patch, MagicMock
 from app.models.finance import FinanceOrderRecord, FinanceOtherFee, FinanceSyncLog
 from app.models.shop import Shop
 from app.utils.security import encrypt_token
@@ -45,3 +46,59 @@ def test_finance_sync_log_model(db):
     db.add(log); db.commit()
     assert log.status == "running"
     assert log.started_at is not None
+
+
+def test_fetch_finance_report_paginates():
+    """fetch_finance_report 按 rrdid 分页直到返回空。"""
+    from app.services.wb_api import fetch_finance_report
+
+    pages = [
+        [{"rrd_id": 1, "srid": "s1", "supplier_oper_name": "Продажа"},
+         {"rrd_id": 2, "srid": "s2", "supplier_oper_name": "Логистика"}],
+        [{"rrd_id": 3, "srid": "s3", "supplier_oper_name": "Продажа"}],
+        [],
+    ]
+    call_log = []
+
+    class FakeResp:
+        def __init__(self, data):
+            self.status_code = 200
+            self._data = data
+        def json(self):
+            return self._data
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        call_log.append(params.get("rrdid"))
+        idx = len(call_log) - 1
+        return FakeResp(pages[idx])
+
+    with patch("app.services.wb_api.httpx.Client") as mock_client:
+        ctx = mock_client.return_value.__enter__.return_value
+        ctx.get.side_effect = fake_get
+        rows = fetch_finance_report("fake_token", "2026-04-01", "2026-04-07")
+
+    assert len(rows) == 3
+    assert call_log == [0, 2, 3]   # 首页 0，下一页用上一页最后 rrd_id
+
+
+def test_fetch_finance_report_handles_429():
+    """遇 429 指数退避重试，最终成功。"""
+    from app.services.wb_api import fetch_finance_report
+
+    class FakeResp:
+        def __init__(self, status, data=None):
+            self.status_code = status
+            self._data = data or []
+        def json(self):
+            return self._data
+
+    responses = [FakeResp(429), FakeResp(200, [])]
+
+    with patch("app.services.wb_api.httpx.Client") as mock_client, \
+         patch("app.services.wb_api.time.sleep") as mock_sleep:
+        ctx = mock_client.return_value.__enter__.return_value
+        ctx.get.side_effect = responses
+        rows = fetch_finance_report("fake_token", "2026-04-01", "2026-04-07")
+
+    assert rows == []
+    assert mock_sleep.called
