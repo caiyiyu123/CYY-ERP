@@ -97,6 +97,45 @@
       </template>
       <v-chart :option="chartOption" style="height: 320px" autoresize />
     </el-card>
+
+    <!-- 店铺看板 -->
+    <div class="ts-section-label" style="margin-top: 24px">店铺看板</div>
+
+    <el-breadcrumb separator="/" class="ts-shop-breadcrumb">
+      <el-breadcrumb-item>
+        <a @click.prevent="goToShops" href="#">店铺总览</a>
+      </el-breadcrumb-item>
+      <el-breadcrumb-item v-if="viewMode !== 'shops' && currentShop">
+        <a @click.prevent="goToProducts" href="#">{{ currentShop.name }}</a>
+      </el-breadcrumb-item>
+      <el-breadcrumb-item v-if="viewMode === 'detail' && currentProduct">
+        {{ currentProduct.name }}
+      </el-breadcrumb-item>
+    </el-breadcrumb>
+
+    <el-row v-if="viewMode === 'shops'" :gutter="16" v-loading="loading.shops">
+      <el-col :span="6" v-for="shop in shopCards" :key="shop.id">
+        <div class="ts-stat-card ts-shop-card" @click="openShop(shop)">
+          <div class="ts-shop-name">{{ shop.name }}</div>
+          <div class="ts-shop-metric">
+            <span class="ts-shop-metric-label">今日订单</span>
+            <span class="ts-shop-metric-value">{{ shop.today_orders }}</span>
+          </div>
+          <div class="ts-shop-metric">
+            <span class="ts-shop-metric-label">今日销售额</span>
+            <span class="ts-shop-metric-value">₽{{ Math.round(shop.today_sales).toLocaleString() }}</span>
+          </div>
+          <div class="ts-shop-metric">
+            <span class="ts-shop-metric-label">近30天销售额</span>
+            <span class="ts-shop-metric-value">₽{{ Math.round(shop.last_30d_sales).toLocaleString() }}</span>
+          </div>
+          <div class="ts-stat-indicator ts-stat-blue"></div>
+        </div>
+      </el-col>
+      <el-col v-if="!loading.shops && shopCards.length === 0" :span="24">
+        <el-empty description="暂无店铺数据" />
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -117,6 +156,44 @@ const stats = ref({
   pending_shipment: 0, in_transit_count: 0,
   low_stock_count: 0, days30_orders: 0, days30_sales: 0, daily_trend: [],
 })
+
+const viewMode = ref('shops')         // 'shops' | 'products' | 'detail'
+const currentShop = ref(null)         // { id, name }
+const currentProduct = ref(null)      // { nm_id, name }
+
+const shopCards = ref([])
+const productList = ref([])
+const dailyData = ref([])             // [{ date, orders }]
+const dailyEndDate = ref(null)
+const loading = ref({ shops: false, products: false, daily: false })
+
+async function fetchShopCards() {
+  loading.value.shops = true
+  try {
+    const { data } = await api.get('/api/dashboard/shops')
+    shopCards.value = data.shops
+  } catch (e) {
+    console.error('shops error', e)
+    ElMessage.error('店铺数据加载失败')
+  } finally {
+    loading.value.shops = false
+  }
+}
+
+function goToShops() {
+  viewMode.value = 'shops'
+}
+
+function goToProducts() {
+  viewMode.value = 'products'
+}
+
+async function openShop(shop) {
+  currentShop.value = { id: shop.id, name: shop.name }
+  productList.value = []
+  viewMode.value = 'products'
+  // Task 5 will populate productList
+}
 
 const chartOption = computed(() => {
   const trend = stats.value.daily_trend || []
@@ -214,6 +291,7 @@ onMounted(async () => {
   try {
     const { data } = await api.get('/api/dashboard/stats')
     stats.value = data
+    await fetchShopCards()
   } catch (e) {
     console.error('Dashboard stats error:', e)
     ElMessage.error('数据加载失败')
@@ -281,6 +359,43 @@ onMounted(async () => {
 .ts-chart-title {
   font-weight: 600;
   font-size: 15px;
+  color: var(--ts-text-heading);
+}
+
+.ts-shop-breadcrumb {
+  margin-bottom: 16px;
+}
+.ts-shop-breadcrumb a {
+  color: var(--ts-text-muted);
+  text-decoration: none;
+}
+.ts-shop-breadcrumb a:hover {
+  color: var(--ts-text-heading);
+}
+
+.ts-shop-card {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ts-shop-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ts-text-heading);
+  margin-bottom: 6px;
+}
+.ts-shop-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+.ts-shop-metric-label {
+  color: var(--ts-text-muted);
+}
+.ts-shop-metric-value {
+  font-weight: 600;
   color: var(--ts-text-heading);
 }
 </style>
