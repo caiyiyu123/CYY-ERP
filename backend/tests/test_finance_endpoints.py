@@ -159,9 +159,18 @@ def test_sync_endpoint_creates_log(client, db, monkeypatch):
     _setup_admin(db)
     shop = _make_shop(db, "local")
     # make sync_shop a no-op that only updates the log
-    def fake_sync(db_, shop_, *, date_from, date_to, triggered_by, user_id):
+    def fake_sync(db_, shop_, *, date_from, date_to, triggered_by, user_id, log_id=None):
         from app.models.finance import FinanceSyncLog
         from datetime import datetime, timezone
+        if log_id is not None:
+            log = db_.query(FinanceSyncLog).get(log_id)
+            log.status = "success"
+            log.rows_fetched = 0
+            log.orders_merged = 0
+            log.other_fees_count = 0
+            log.finished_at = datetime.now(timezone.utc)
+            db_.commit()
+            return log
         log = FinanceSyncLog(shop_id=shop_.id, triggered_by=triggered_by, user_id=user_id,
                              date_from=date_from, date_to=date_to, status="success",
                              rows_fetched=0, orders_merged=0, other_fees_count=0,

@@ -58,12 +58,12 @@ let pollIds = []
 
 function getLast90Range() {
   const end = new Date(); const start = new Date(end.getTime() - 89 * 86400000)
-  const fmt = d => d.toISOString().slice(0, 10)
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   return [fmt(start), fmt(end)]
 }
 function setRange(key) {
   const today = new Date(); const day = today.getDay() || 7
-  const fmt = d => d.toISOString().slice(0, 10)
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   if (key === 'lastWeek') {
     const lastMon = new Date(today.getTime() - (day + 6) * 86400000)
     const lastSun = new Date(today.getTime() - day * 86400000)

@@ -90,7 +90,7 @@ def merge_rows_by_srid(
             "report_period_end": period_end,
             "nm_id": str(sale_row.get("nm_id") or ""),
             "shop_sku": sale_row.get("sa_name") or "",
-            "product_name": sale_row.get("sa_name") and "" or "",  # overridden below
+            "product_name": "",  # set below
             "barcode": sale_row.get("barcode") or "",
             "category": sale_row.get("subject_name") or "",
             "size": sale_row.get("ts_name") or "",
@@ -209,15 +209,24 @@ def fill_purchase_cost_and_profit(records: list[dict], db, shop_id: int) -> None
 
 
 def sync_shop(db, shop, *, date_from: date, date_to: date,
-              triggered_by: str, user_id: Optional[int]) -> "FinanceSyncLog":
-    """Full pipeline for one shop. Returns the FinanceSyncLog row (detached)."""
+              triggered_by: str, user_id: Optional[int],
+              log_id: Optional[int] = None) -> "FinanceSyncLog":
+    """Full pipeline for one shop. Returns the FinanceSyncLog row.
+
+    If log_id is provided, updates that existing log (created by the caller,
+    typically the /sync router so it can return the id immediately). Otherwise
+    creates a new running log.
+    """
     from app.models.finance import FinanceOrderRecord, FinanceOtherFee, FinanceSyncLog
 
-    log = FinanceSyncLog(
-        shop_id=shop.id, triggered_by=triggered_by, user_id=user_id,
-        date_from=date_from, date_to=date_to, status="running",
-    )
-    db.add(log); db.commit()
+    if log_id is not None:
+        log = db.query(FinanceSyncLog).get(log_id)
+    else:
+        log = FinanceSyncLog(
+            shop_id=shop.id, triggered_by=triggered_by, user_id=user_id,
+            date_from=date_from, date_to=date_to, status="running",
+        )
+        db.add(log); db.commit()
 
     try:
         token = decrypt_token(shop.api_token)
@@ -237,7 +246,8 @@ def sync_shop(db, shop, *, date_from: date, date_to: date,
             period_start=date_from, period_end=date_to,
         )
 
-        # Idempotent: delete existing rows within the date window
+        # Idempotent: delete existing rows within the date window, then insert.
+        # Both deletes and inserts share one transaction; rollback on any error.
         db.query(FinanceOrderRecord).filter(
             FinanceOrderRecord.shop_id == shop.id,
             FinanceOrderRecord.sale_date >= date_from,
@@ -262,6 +272,8 @@ def sync_shop(db, shop, *, date_from: date, date_to: date,
         db.commit()
     except Exception as e:
         db.rollback()
+        # rollback may detach `log`; re-fetch to ensure attached state.
+        log = db.query(FinanceSyncLog).get(log.id)
         log.status = "failed"
         log.error_message = str(e)[:2000]
         log.finished_at = datetime.now(timezone.utc)

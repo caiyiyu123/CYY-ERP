@@ -26,22 +26,29 @@ def _require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-def _sync_shop_blocking(db, shop, *, date_from, date_to, triggered_by, user_id):
+def _sync_shop_blocking(db, shop, *, date_from, date_to, triggered_by, user_id, log_id=None):
     """Indirection so tests can monkeypatch without touching the service module."""
     return sync_shop(db, shop, date_from=date_from, date_to=date_to,
-                     triggered_by=triggered_by, user_id=user_id)
+                     triggered_by=triggered_by, user_id=user_id, log_id=log_id)
 
 
-def _sync_shop_in_background(shop_id: int, date_from: date, date_to: date, user_id: Optional[int]):
+def _sync_shop_in_background(shop_id: int, date_from: date, date_to: date,
+                             user_id: Optional[int], log_id: int):
     db = SessionLocal()
     try:
         shop = db.query(Shop).get(shop_id)
         if not shop:
             return
         _sync_shop_blocking(db, shop, date_from=date_from, date_to=date_to,
-                            triggered_by="manual", user_id=user_id)
+                            triggered_by="manual", user_id=user_id, log_id=log_id)
     finally:
         db.close()
+
+
+_ORDERS_SORT_WHITELIST = {
+    "sale_date", "order_date", "net_to_seller", "net_profit",
+    "purchase_cost", "quantity", "commission_amount", "delivery_fee",
+}
 
 
 class SyncBody(BaseModel):
@@ -162,7 +169,9 @@ def finance_orders(
 
     total = q.count()
     sort_col = sort.lstrip("-+")
-    order_col = getattr(FinanceOrderRecord, sort_col, FinanceOrderRecord.sale_date)
+    if sort_col not in _ORDERS_SORT_WHITELIST:
+        sort_col = "sale_date"
+    order_col = getattr(FinanceOrderRecord, sort_col)
     if sort.startswith("-"):
         order_col = order_col.desc()
     q = q.order_by(order_col).offset((page - 1) * page_size).limit(page_size)
@@ -302,7 +311,7 @@ def finance_sync(
         )
         db.add(log); db.commit()
         log_ids.append(log.id)
-        _sync_pool.submit(_sync_shop_in_background, sid, body.date_from, body.date_to, user.id)
+        _sync_pool.submit(_sync_shop_in_background, sid, body.date_from, body.date_to, user.id, log.id)
 
     return {"sync_log_ids": log_ids}
 
@@ -361,15 +370,13 @@ def finance_recalc_profit(
             "net_to_seller": r.net_to_seller, "delivery_fee": r.delivery_fee,
             "fine": r.fine, "storage_fee": r.storage_fee, "deduction": r.deduction,
             "purchase_cost": 0.0, "net_profit": 0.0, "has_sku_mapping": False,
-            "_id": r.id,
         }
         for r in records
     ]
     fill_purchase_cost_and_profit(dicts, db, shop_id=body.shop_id)
-    for d in dicts:
-        rec = db.query(FinanceOrderRecord).get(d["_id"])
-        rec.purchase_cost = d["purchase_cost"]
-        rec.has_sku_mapping = d["has_sku_mapping"]
-        rec.net_profit = d["net_profit"]
+    for r, d in zip(records, dicts):
+        r.purchase_cost = d["purchase_cost"]
+        r.has_sku_mapping = d["has_sku_mapping"]
+        r.net_profit = d["net_profit"]
     db.commit()
     return {"updated": len(dicts)}
