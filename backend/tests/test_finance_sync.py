@@ -210,3 +210,73 @@ def test_extract_other_fees_amount_picks_first_nonzero():
     fees = extract_other_fees(rows, shop_id=1, currency="CNY", period_start=None, period_end=None)
     assert fees[0]["fee_type"] == "deduction"
     assert fees[0]["amount"] == 33
+
+
+def test_fill_purchase_cost_with_mapping(db):
+    """有 SKU 映射 → purchase_cost = purchase_price × quantity, has_sku_mapping=True。"""
+    from app.models.shop import Shop
+    from app.models.product import Product, SkuMapping
+    from app.utils.security import encrypt_token
+    from app.services.finance_sync import fill_purchase_cost_and_profit
+
+    shop = Shop(name="S", type="local", api_token=encrypt_token("t"), is_active=True)
+    db.add(shop); db.commit()
+    product = Product(sku="P1", name="鞋子", purchase_price=30.0)
+    db.add(product); db.commit()
+    mapping = SkuMapping(shop_id=shop.id, shop_sku="SKU-1", product_id=product.id)
+    db.add(mapping); db.commit()
+
+    records = [{
+        "shop_id": shop.id, "shop_sku": "SKU-1", "quantity": 2,
+        "net_to_seller": 200.0, "delivery_fee": 20.0,
+        "fine": 0.0, "storage_fee": 0.0, "deduction": 0.0,
+        "purchase_cost": 0.0, "net_profit": 0.0, "has_sku_mapping": False,
+    }]
+    fill_purchase_cost_and_profit(records, db, shop_id=shop.id)
+
+    assert records[0]["purchase_cost"] == 60.0
+    assert records[0]["has_sku_mapping"] is True
+    assert records[0]["net_profit"] == 200.0 - 20.0 - 60.0  # 120.0
+
+
+def test_fill_purchase_cost_without_mapping(db):
+    """无映射 → purchase_cost=0, has_sku_mapping=False, 利润按 0 采购成本算。"""
+    from app.models.shop import Shop
+    from app.utils.security import encrypt_token
+    from app.services.finance_sync import fill_purchase_cost_and_profit
+
+    shop = Shop(name="S", type="local", api_token=encrypt_token("t"), is_active=True)
+    db.add(shop); db.commit()
+    records = [{
+        "shop_id": shop.id, "shop_sku": "UNMAPPED", "quantity": 1,
+        "net_to_seller": 100.0, "delivery_fee": 10.0,
+        "fine": 0.0, "storage_fee": 0.0, "deduction": 0.0,
+        "purchase_cost": 0.0, "net_profit": 0.0, "has_sku_mapping": False,
+    }]
+    fill_purchase_cost_and_profit(records, db, shop_id=shop.id)
+    assert records[0]["purchase_cost"] == 0
+    assert records[0]["has_sku_mapping"] is False
+    assert records[0]["net_profit"] == 90.0
+
+
+def test_fill_purchase_cost_mapping_without_product(db):
+    """映射存在但 product_id 为 NULL → 视作无映射。"""
+    from app.models.shop import Shop
+    from app.models.product import SkuMapping
+    from app.utils.security import encrypt_token
+    from app.services.finance_sync import fill_purchase_cost_and_profit
+
+    shop = Shop(name="S", type="local", api_token=encrypt_token("t"), is_active=True)
+    db.add(shop); db.commit()
+    mapping = SkuMapping(shop_id=shop.id, shop_sku="UM", product_id=None)
+    db.add(mapping); db.commit()
+
+    records = [{
+        "shop_id": shop.id, "shop_sku": "UM", "quantity": 1,
+        "net_to_seller": 50.0, "delivery_fee": 5.0,
+        "fine": 0.0, "storage_fee": 0.0, "deduction": 0.0,
+        "purchase_cost": 0.0, "net_profit": 0.0, "has_sku_mapping": False,
+    }]
+    fill_purchase_cost_and_profit(records, db, shop_id=shop.id)
+    assert records[0]["purchase_cost"] == 0
+    assert records[0]["has_sku_mapping"] is False

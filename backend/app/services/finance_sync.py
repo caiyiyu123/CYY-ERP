@@ -163,3 +163,43 @@ def extract_other_fees(
             "raw_row": r,
         })
     return result
+
+
+def fill_purchase_cost_and_profit(records: list[dict], db, shop_id: int) -> None:
+    """Mutate records in place: set purchase_cost, has_sku_mapping, net_profit.
+
+    Lookup via SkuMapping(shop_id, shop_sku) -> Product.purchase_price.
+    Missing mapping or NULL product_id → purchase_cost=0, has_sku_mapping=False.
+    """
+    from app.models.product import SkuMapping, Product
+
+    skus = {r["shop_sku"] for r in records if r.get("shop_sku")}
+    if skus:
+        rows = (
+            db.query(SkuMapping.shop_sku, Product.purchase_price)
+            .outerjoin(Product, Product.id == SkuMapping.product_id)
+            .filter(SkuMapping.shop_id == shop_id, SkuMapping.shop_sku.in_(skus))
+            .all()
+        )
+        price_map = {sku: (price or 0) for sku, price in rows if price is not None}
+    else:
+        price_map = {}
+
+    for r in records:
+        sku = r.get("shop_sku") or ""
+        qty = r.get("quantity", 0)
+        price = price_map.get(sku)
+        if price is not None and price > 0:
+            r["purchase_cost"] = price * qty
+            r["has_sku_mapping"] = True
+        else:
+            r["purchase_cost"] = 0.0
+            r["has_sku_mapping"] = False
+        r["net_profit"] = (
+            r.get("net_to_seller", 0)
+            - r.get("delivery_fee", 0)
+            - r.get("fine", 0)
+            - r.get("storage_fee", 0)
+            - r.get("deduction", 0)
+            - r["purchase_cost"]
+        )
