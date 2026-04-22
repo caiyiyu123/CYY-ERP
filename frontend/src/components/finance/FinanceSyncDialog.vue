@@ -13,7 +13,13 @@
         </el-form-item>
         <el-form-item label="快捷">
           <el-button size="small" @click="setRange('lastWeek')">上周</el-button>
-          <el-button size="small" @click="setRange('last90d')">近 90 天（全历史）</el-button>
+          <el-button size="small" @click="setRange('last90d')">近 90 天</el-button>
+        </el-form-item>
+        <el-form-item label="全部历史">
+          <el-button size="small" type="warning" @click="startSyncAll" :disabled="!selectedShops.length">
+            同步全部历史账单（含 90 天前）
+          </el-button>
+          <span class="ts-hint">耗时较长，循环 89 天窗口直至无数据</span>
         </el-form-item>
       </el-form>
     </div>
@@ -42,7 +48,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../../api'
 
 const props = defineProps({ modelValue: Boolean })
@@ -96,6 +102,27 @@ async function startSync() {
   }
 }
 
+async function startSyncAll() {
+  if (!selectedShops.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      '将循环 89 天窗口拉取全部历史账单，单店铺可能耗时数分钟。确认开始？',
+      '同步全部历史', { type: 'warning' }
+    )
+  } catch { return }
+  try {
+    const { data } = await api.post('/api/finance/sync-all', {
+      shop_ids: selectedShops.value,
+    })
+    pollIds = data.sync_log_ids
+    running.value = true
+    logs.value = pollIds.map(id => ({ id, status: 'running', shop_name: '...' }))
+    startPolling()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || '触发同步失败')
+  }
+}
+
 function startPolling() {
   if (pollTimer.value) clearInterval(pollTimer.value)
   pollTimer.value = setInterval(async () => {
@@ -132,4 +159,5 @@ onUnmounted(() => { if (pollTimer.value) clearInterval(pollTimer.value) })
 .ts-log-shop { font-weight: 600; min-width: 140px; }
 .ts-log-stats { color: #64748b; font-size: 12px; }
 .ts-log-err { color: #dc2626; font-size: 12px; }
+.ts-hint { color: #94a3b8; font-size: 12px; margin-left: 8px; }
 </style>

@@ -1,7 +1,9 @@
 import threading
 import traceback
 from typing import Optional
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db, SessionLocal
@@ -101,21 +103,46 @@ def list_orders(
 
 # --- Sync endpoints (must be before /{order_id} to avoid route conflict) ---
 
-def _run_order_sync():
+def _run_order_sync(shop_ids: list[int], days_back: int, clear: bool):
     db = SessionLocal()
     try:
-        shops = db.query(Shop).filter(Shop.is_active == True).all()
+        shops = db.query(Shop).filter(
+            Shop.is_active == True, Shop.id.in_(shop_ids)
+        ).all()
+        if not shops:
+            with _order_sync_lock:
+                _order_sync_status["status"] = "error"
+                _order_sync_status["detail"] = "所选店铺均不存在或未启用"
+            return
+
+        if clear:
+            with _order_sync_lock:
+                _order_sync_status["detail"] = "正在清除所选店铺的旧订单数据..."
+            sids = [s.id for s in shops]
+            order_ids = [r[0] for r in db.query(Order.id).filter(Order.shop_id.in_(sids)).all()]
+            if order_ids:
+                db.query(OrderStatusLog).filter(OrderStatusLog.order_id.in_(order_ids)).delete(synchronize_session=False)
+                db.query(OrderItem).filter(OrderItem.order_id.in_(order_ids)).delete(synchronize_session=False)
+                db.query(Order).filter(Order.id.in_(order_ids)).delete(synchronize_session=False)
+            for shop in shops:
+                shop.last_sync_at = None
+            db.commit()
+
+        with _order_sync_lock:
+            _order_sync_status["detail"] = f"正在同步订单（回溯 {days_back} 天，{len(shops)} 店铺）..."
+
+        date_from = datetime.now(timezone.utc) - timedelta(days=days_back)
         synced = 0
         for shop in shops:
             try:
-                sync_shop_orders(db, shop)
+                sync_shop_orders(db, shop, date_from=date_from)
                 synced += 1
             except Exception as e:
                 print(f"[OrderSync] Failed for {shop.name}: {e}")
                 traceback.print_exc()
         with _order_sync_lock:
             _order_sync_status["status"] = "done"
-            _order_sync_status["detail"] = f"已同步 {synced}/{len(shops)} 个店铺的订单"
+            _order_sync_status["detail"] = f"已同步 {synced}/{len(shops)} 个店铺的订单（回溯 {days_back} 天）"
     except Exception as e:
         print(f"[OrderSync] Fatal error: {e}")
         traceback.print_exc()
@@ -126,14 +153,31 @@ def _run_order_sync():
         db.close()
 
 
+class SyncBody(BaseModel):
+    shop_ids: list[int]
+    days_back: int = 90
+    clear: bool = False
+
+
 @router.post("/sync")
-def trigger_order_sync(_=Depends(require_role("admin", "operator"))):
+def trigger_order_sync(
+    body: SyncBody,
+    _=Depends(require_role("admin", "operator")),
+):
+    if not body.shop_ids:
+        raise HTTPException(status_code=400, detail="请至少选择一个店铺")
+    if body.days_back < 1 or body.days_back > 3650:
+        raise HTTPException(status_code=400, detail="回溯天数需在 1 ~ 3650 之间")
     with _order_sync_lock:
         if _order_sync_status["status"] == "running":
             return {"status": "running", "detail": "订单同步进行中，请稍候"}
         _order_sync_status["status"] = "running"
         _order_sync_status["detail"] = ""
-    thread = threading.Thread(target=_run_order_sync, daemon=True)
+    thread = threading.Thread(
+        target=_run_order_sync,
+        args=(body.shop_ids, body.days_back, body.clear),
+        daemon=True,
+    )
     thread.start()
     return {"status": "running", "detail": "订单同步已启动"}
 
@@ -157,57 +201,3 @@ def get_order(order_id: int, db: Session = Depends(get_db), accessible_shops: li
     return order
 
 
-# --- Full sync: clear all orders then re-sync ---
-
-def _run_full_order_sync():
-    db = SessionLocal()
-    try:
-        with _order_sync_lock:
-            _order_sync_status["detail"] = "正在清除旧订单数据..."
-
-        # Clear all orders
-        db.query(OrderStatusLog).delete()
-        db.query(OrderItem).delete()
-        db.query(Order).delete()
-
-        # Reset last_sync_at so sync fetches full history
-        shops = db.query(Shop).filter(Shop.is_active == True).all()
-        for shop in shops:
-            shop.last_sync_at = None
-        db.commit()
-
-        with _order_sync_lock:
-            _order_sync_status["detail"] = "正在重新同步订单..."
-
-        synced = 0
-        for shop in shops:
-            try:
-                sync_shop_orders(db, shop)
-                synced += 1
-            except Exception as e:
-                print(f"[FullSync] Failed for {shop.name}: {e}")
-                traceback.print_exc()
-
-        with _order_sync_lock:
-            _order_sync_status["status"] = "done"
-            _order_sync_status["detail"] = f"全量同步完成，已同步 {synced}/{len(shops)} 个店铺"
-    except Exception as e:
-        print(f"[FullSync] Fatal error: {e}")
-        traceback.print_exc()
-        with _order_sync_lock:
-            _order_sync_status["status"] = "error"
-            _order_sync_status["detail"] = str(e)
-    finally:
-        db.close()
-
-
-@router.post("/full-sync")
-def trigger_full_order_sync(_=Depends(require_role("admin"))):
-    with _order_sync_lock:
-        if _order_sync_status["status"] == "running":
-            return {"status": "running", "detail": "订单同步进行中，请稍候"}
-        _order_sync_status["status"] = "running"
-        _order_sync_status["detail"] = "正在清除旧订单数据..."
-    thread = threading.Thread(target=_run_full_order_sync, daemon=True)
-    thread.start()
-    return {"status": "running", "detail": "全量同步已启动"}

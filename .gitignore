@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 backend/venv/
 backend/*.db
+backend/*.db-journal
 backend/test_*.db
 backend/app/uploads/*
 !backend/app/uploads/.gitkeep

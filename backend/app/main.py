@@ -87,6 +87,12 @@ try:
             if "api_token" in shop_cols and "varchar" in str(shop_cols["api_token"]["type"]).lower():
                 conn.execute(text("ALTER TABLE shops ALTER COLUMN api_token TYPE TEXT"))
                 conn.commit()
+            if "orders_backfill_cursor" not in shop_cols:
+                conn.execute(text("ALTER TABLE shops ADD COLUMN orders_backfill_cursor DATE"))
+                conn.commit()
+            if "finance_backfill_cursor" not in shop_cols:
+                conn.execute(text("ALTER TABLE shops ADD COLUMN finance_backfill_cursor DATE"))
+                conn.commit()
         if "sku_mappings" in inspector.get_table_names():
             sku_cols = {c["name"] for c in inspector.get_columns("sku_mappings")}
             if "wb_nm_id" not in sku_cols:
@@ -117,6 +123,53 @@ try:
                 conn.execute(text("ALTER TABLE products ALTER COLUMN image TYPE TEXT"))
                 conn.commit()
                 print("[Migration] Changed products.image column to TEXT for base64 storage")
+        # FinanceOtherFee: add order_date + srid columns
+        if "finance_other_fees" in inspector.get_table_names():
+            of_cols = {c["name"] for c in inspector.get_columns("finance_other_fees")}
+            need_backfill = False
+            if "order_date" not in of_cols:
+                conn.execute(text("ALTER TABLE finance_other_fees ADD COLUMN order_date DATE"))
+                conn.commit()
+                print("[Migration] Added order_date column to finance_other_fees")
+                need_backfill = True
+            if "srid" not in of_cols:
+                conn.execute(text("ALTER TABLE finance_other_fees ADD COLUMN srid VARCHAR(200) DEFAULT ''"))
+                conn.commit()
+                print("[Migration] Added srid column to finance_other_fees")
+                need_backfill = True
+            if need_backfill:
+                # Backfill from raw_row JSON: order_dt / srid
+                from app.database import SessionLocal
+                from app.models.finance import FinanceOtherFee
+                from datetime import datetime as _dt
+                db_bf = SessionLocal()
+                try:
+                    count = 0
+                    for fee in db_bf.query(FinanceOtherFee).all():
+                        raw = fee.raw_row or {}
+                        changed = False
+                        if not fee.order_date:
+                            od = raw.get("order_dt")
+                            if od:
+                                try:
+                                    fee.order_date = _dt.fromisoformat(str(od).replace("Z", "")).date()
+                                    changed = True
+                                except Exception:
+                                    pass
+                        if not fee.srid:
+                            sr = raw.get("srid")
+                            if sr:
+                                fee.srid = str(sr)
+                                changed = True
+                        if changed:
+                            count += 1
+                    db_bf.commit()
+                    print(f"[Migration] Backfilled finance_other_fees order_date/srid: {count} rows")
+                except Exception as e:
+                    db_bf.rollback()
+                    print(f"[Migration] Backfill failed: {e}")
+                finally:
+                    db_bf.close()
 except Exception as e:
     print(f"[Migration] Warning: {e}")
 

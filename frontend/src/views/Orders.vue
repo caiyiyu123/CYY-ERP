@@ -4,16 +4,9 @@
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px">
         <div style="display: flex; align-items: center; gap: 12px">
           <span>订单列表</span>
-          <el-button type="primary" size="small" :loading="syncing" @click="syncOrders">
+          <el-button type="primary" size="small" :loading="syncing" @click="openSyncDialog">
             {{ syncing ? '同步中...' : '同步订单' }}
           </el-button>
-          <el-popconfirm title="将清空所有订单数据并重新抓取，确定继续？" @confirm="fullSyncOrders">
-            <template #reference>
-              <el-button type="warning" size="small" :loading="syncing">
-                {{ syncing ? '同步中...' : '全量同步' }}
-              </el-button>
-            </template>
-          </el-popconfirm>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
           <el-button v-for="p in datePresets" :key="p.label"
@@ -97,6 +90,33 @@
       </el-table-column>
     </el-table>
     <el-pagination v-model:current-page="page" :total="total" :page-size="50" layout="total, prev, pager, next" style="margin-top: 16px" @current-change="fetchOrders" />
+
+    <el-dialog v-model="syncDialog.open" title="同步订单" width="520px" :close-on-click-modal="false">
+      <el-form label-width="100px">
+        <el-form-item label="店铺" required>
+          <el-select v-model="syncDialog.shopIds" multiple placeholder="选择店铺（可多选）" style="width: 100%">
+            <el-option v-for="s in shops" :key="s.id" :label="s.name" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="回溯天数">
+          <el-input-number v-model="syncDialog.daysBack" :min="1" :max="3650" style="width: 140px" />
+          <el-button-group style="margin-left: 12px">
+            <el-button size="small" @click="syncDialog.daysBack = 90">90 天</el-button>
+            <el-button size="small" @click="syncDialog.daysBack = 365">1 年</el-button>
+            <el-button size="small" @click="syncDialog.daysBack = 1095">3 年</el-button>
+          </el-button-group>
+        </el-form-item>
+        <el-form-item label="清空重建">
+          <el-checkbox v-model="syncDialog.clear">先清空所选店铺的订单再重新抓取</el-checkbox>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="syncDialog.open = false">取消</el-button>
+        <el-button type="primary" :loading="syncing" :disabled="!syncDialog.shopIds.length" @click="submitSync">
+          开始同步
+        </el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -104,7 +124,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 
 const route = useRoute()
@@ -183,77 +203,60 @@ function formatTime(dt) {
 }
 
 let syncPollTimer = null
+const syncDialog = reactive({ open: false, shopIds: [], daysBack: 90, clear: false })
 
-async function syncOrders() {
+function openSyncDialog() {
+  syncDialog.shopIds = filters.shop_id ? [filters.shop_id] : []
+  syncDialog.daysBack = 90
+  syncDialog.clear = false
+  syncDialog.open = true
+}
+
+async function submitSync() {
+  if (!syncDialog.shopIds.length) return
+  if (syncDialog.clear) {
+    try {
+      await ElMessageBox.confirm(
+        `将清空所选 ${syncDialog.shopIds.length} 个店铺的全部订单后重新抓取近 ${syncDialog.daysBack} 天数据，确认继续？`,
+        '清空重建确认', { type: 'warning' }
+      )
+    } catch { return }
+  }
+  syncDialog.open = false
   syncing.value = true
   try {
-    await api.post('/api/orders/sync')
-    // Poll status until done
+    await api.post('/api/orders/sync', {
+      shop_ids: syncDialog.shopIds,
+      days_back: syncDialog.daysBack,
+      clear: syncDialog.clear,
+    })
+    const maxPolls = syncDialog.daysBack > 365 ? 600 : 120
     let pollCount = 0
     syncPollTimer = setInterval(async () => {
       pollCount++
-      if (pollCount > 60) {
-        clearInterval(syncPollTimer)
-        syncPollTimer = null
+      if (pollCount > maxPolls) {
+        clearInterval(syncPollTimer); syncPollTimer = null
         syncing.value = false
-        ElMessage.warning('同步超时，请稍后重试')
+        ElMessage.warning('同步超时，请稍后查看')
         return
       }
       try {
         const { data } = await api.get('/api/orders/sync/status')
         if (data.status === 'done') {
-          clearInterval(syncPollTimer)
-          syncPollTimer = null
+          clearInterval(syncPollTimer); syncPollTimer = null
           syncing.value = false
           ElMessage.success(data.detail || '订单同步完成')
           fetchOrders()
         } else if (data.status === 'error') {
-          clearInterval(syncPollTimer)
-          syncPollTimer = null
+          clearInterval(syncPollTimer); syncPollTimer = null
           syncing.value = false
           ElMessage.error('同步失败: ' + (data.detail || '未知错误'))
         }
       } catch { /* keep polling */ }
     }, 2000)
-  } catch {
+  } catch (e) {
     syncing.value = false
-    ElMessage.error('同步请求失败')
-  }
-}
-
-async function fullSyncOrders() {
-  syncing.value = true
-  try {
-    await api.post('/api/orders/full-sync')
-    let pollCount = 0
-    syncPollTimer = setInterval(async () => {
-      pollCount++
-      if (pollCount > 120) {
-        clearInterval(syncPollTimer)
-        syncPollTimer = null
-        syncing.value = false
-        ElMessage.warning('全量同步超时，请稍后查看')
-        return
-      }
-      try {
-        const { data } = await api.get('/api/orders/sync/status')
-        if (data.status === 'done') {
-          clearInterval(syncPollTimer)
-          syncPollTimer = null
-          syncing.value = false
-          ElMessage.success(data.detail || '全量同步完成')
-          fetchOrders()
-        } else if (data.status === 'error') {
-          clearInterval(syncPollTimer)
-          syncPollTimer = null
-          syncing.value = false
-          ElMessage.error('同步失败: ' + (data.detail || '未知错误'))
-        }
-      } catch { /* keep polling */ }
-    }, 2000)
-  } catch {
-    syncing.value = false
-    ElMessage.error('全量同步请求失败')
+    ElMessage.error(e?.response?.data?.detail || '同步请求失败')
   }
 }
 

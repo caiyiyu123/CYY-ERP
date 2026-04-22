@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from app.database import SessionLocal
 from app.models.shop import Shop
 from app.services.sync import sync_shop_orders, sync_shop_inventory, sync_shop_ads, sync_shop_products
+from app.services.backfill import backfill_tick
 from app.config import SYNC_INTERVAL_MINUTES
 
 scheduler = BackgroundScheduler()
@@ -60,8 +61,17 @@ def start_scheduler():
         id="weekly_finance_sync",
         replace_existing=True,
     )
+    # 每小时慢速回溯一个窗口（订单 30 天 + 财报 89 天），最多回溯 2 年。
+    # 错开整点 15 分启动，避开常规 sync_all 的高频区。
+    scheduler.add_job(
+        backfill_tick,
+        "cron",
+        minute=15,
+        id="backfill_tick",
+        replace_existing=True,
+    )
     scheduler.start()
-    print(f"[Scheduler] Started — syncing every {SYNC_INTERVAL_MINUTES} minutes")
+    print(f"[Scheduler] Started — sync every {SYNC_INTERVAL_MINUTES} min, backfill hourly at :15")
 
 
 def stop_scheduler():

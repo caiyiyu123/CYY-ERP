@@ -11,7 +11,7 @@ from app.models.shop import Shop
 from app.models.order import Order
 from app.models.finance import FinanceOrderRecord, FinanceOtherFee, FinanceSyncLog
 from app.models.user import User
-from app.services.finance_sync import sync_shop, fill_purchase_cost_and_profit
+from app.services.finance_sync import sync_shop, sync_shop_all_history, fill_purchase_cost_and_profit
 from app.utils.deps import get_accessible_shop_ids, require_module, get_current_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
@@ -45,6 +45,18 @@ def _sync_shop_in_background(shop_id: int, date_from: date, date_to: date,
         db.close()
 
 
+def _sync_shop_all_history_in_background(shop_id: int, user_id: Optional[int], log_id: int):
+    db = SessionLocal()
+    try:
+        shop = db.query(Shop).get(shop_id)
+        if not shop:
+            return
+        sync_shop_all_history(db, shop, triggered_by="manual_all",
+                              user_id=user_id, log_id=log_id)
+    finally:
+        db.close()
+
+
 _ORDERS_SORT_WHITELIST = {
     "sale_date", "order_date", "net_to_seller", "net_profit",
     "purchase_cost", "quantity", "commission_amount", "delivery_fee",
@@ -55,6 +67,10 @@ class SyncBody(BaseModel):
     shop_ids: list[int]
     date_from: date
     date_to: date
+
+
+class SyncAllBody(BaseModel):
+    shop_ids: list[int]
 
 
 class RecalcBody(BaseModel):
@@ -79,8 +95,10 @@ def _shop_ids_filter(db: Session, shop_type: str, shop_id: Optional[int],
 def finance_summary(
     shop_type: str = Query(...),
     shop_id: Optional[int] = Query(None),
-    date_from: date = Query(...),
-    date_to: date = Query(...),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    order_date_from: Optional[date] = Query(None),
+    order_date_to: Optional[date] = Query(None),
     db: Session = Depends(get_db),
     accessible_shops: Optional[list[int]] = Depends(get_accessible_shop_ids),
     _=Depends(require_module("finance")),
@@ -94,14 +112,21 @@ def finance_summary(
             "total_delivery_fee": 0, "total_fine": 0,
             "total_storage": 0, "total_deduction": 0,
             "total_purchase_cost": 0, "total_net_profit": 0,
-            "total_other_fees": 0, "final_profit": 0,
+            "total_other_fees": 0,
+            "other_fees_by_type": {"storage": 0, "fine": 0, "deduction": 0, "logistics_adjust": 0, "other": 0},
+            "final_profit": 0,
             "missing_mapping_count": 0,
         }
 
-    base = db.query(FinanceOrderRecord).filter(
-        FinanceOrderRecord.shop_id.in_(sids),
-        FinanceOrderRecord.sale_date.between(date_from, date_to),
-    )
+    base = db.query(FinanceOrderRecord).filter(FinanceOrderRecord.shop_id.in_(sids))
+    if date_from:
+        base = base.filter(FinanceOrderRecord.sale_date >= date_from)
+    if date_to:
+        base = base.filter(FinanceOrderRecord.sale_date <= date_to)
+    if order_date_from:
+        base = base.filter(FinanceOrderRecord.order_date >= order_date_from)
+    if order_date_to:
+        base = base.filter(FinanceOrderRecord.order_date <= order_date_to)
     agg = base.with_entities(
         func.count(FinanceOrderRecord.id),
         func.coalesce(func.sum(FinanceOrderRecord.net_to_seller), 0),
@@ -118,10 +143,23 @@ def finance_summary(
 
     missing = base.filter(FinanceOrderRecord.has_sku_mapping == False).count()
 
-    other_total = db.query(func.coalesce(func.sum(FinanceOtherFee.amount), 0)).filter(
-        FinanceOtherFee.shop_id.in_(sids),
-        FinanceOtherFee.sale_date.between(date_from, date_to),
-    ).scalar() or 0
+    ofq = db.query(
+        FinanceOtherFee.fee_type,
+        func.coalesce(func.sum(FinanceOtherFee.amount), 0),
+    ).filter(FinanceOtherFee.shop_id.in_(sids))
+    if date_from:
+        ofq = ofq.filter(FinanceOtherFee.sale_date >= date_from)
+    if date_to:
+        ofq = ofq.filter(FinanceOtherFee.sale_date <= date_to)
+    if order_date_from:
+        ofq = ofq.filter(FinanceOtherFee.order_date >= order_date_from)
+    if order_date_to:
+        ofq = ofq.filter(FinanceOtherFee.order_date <= order_date_to)
+    other_fees_by_type = {"storage": 0.0, "fine": 0.0, "deduction": 0.0, "logistics_adjust": 0.0, "other": 0.0}
+    for ft, amt in ofq.group_by(FinanceOtherFee.fee_type).all():
+        key = ft if ft in other_fees_by_type else "other"
+        other_fees_by_type[key] += float(amt or 0)
+    other_total = sum(other_fees_by_type.values())
 
     return {
         "currency": currency,
@@ -135,6 +173,7 @@ def finance_summary(
         "total_purchase_cost": float(purchase_cost),
         "total_net_profit": float(net_profit),
         "total_other_fees": float(other_total),
+        "other_fees_by_type": other_fees_by_type,
         "final_profit": float(net_profit) - float(other_total),
         "missing_mapping_count": int(missing),
     }
@@ -144,10 +183,13 @@ def finance_summary(
 def finance_orders(
     shop_type: str = Query(...),
     shop_id: Optional[int] = Query(None),
-    date_from: date = Query(...),
-    date_to: date = Query(...),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    order_date_from: Optional[date] = Query(None),
+    order_date_to: Optional[date] = Query(None),
     has_return: Optional[bool] = Query(None),
     has_mapping: Optional[bool] = Query(None),
+    srid: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     sort: str = Query("-sale_date"),
@@ -158,14 +200,21 @@ def finance_orders(
     sids = _shop_ids_filter(db, shop_type, shop_id, accessible_shops)
     if not sids:
         return {"items": [], "total": 0}
-    q = db.query(FinanceOrderRecord).filter(
-        FinanceOrderRecord.shop_id.in_(sids),
-        FinanceOrderRecord.sale_date.between(date_from, date_to),
-    )
+    q = db.query(FinanceOrderRecord).filter(FinanceOrderRecord.shop_id.in_(sids))
+    if date_from:
+        q = q.filter(FinanceOrderRecord.sale_date >= date_from)
+    if date_to:
+        q = q.filter(FinanceOrderRecord.sale_date <= date_to)
+    if order_date_from:
+        q = q.filter(FinanceOrderRecord.order_date >= order_date_from)
+    if order_date_to:
+        q = q.filter(FinanceOrderRecord.order_date <= order_date_to)
     if has_return is not None:
         q = q.filter(FinanceOrderRecord.has_return_row == has_return)
     if has_mapping is not None:
         q = q.filter(FinanceOrderRecord.has_sku_mapping == has_mapping)
+    if srid:
+        q = q.filter(FinanceOrderRecord.srid.like(f"%{srid.strip()}%"))
 
     total = q.count()
     sort_col = sort.lstrip("-+")
@@ -177,8 +226,19 @@ def finance_orders(
     q = q.order_by(order_col).offset((page - 1) * page_size).limit(page_size)
 
     shops = {s.id: s.name for s in db.query(Shop).filter(Shop.id.in_(sids)).all()}
+    rows = q.all()
+    # 按 srid 关联 Order 表取真实订单状态
+    srids = [r.srid for r in rows if r.srid]
+    status_map: dict[str, str] = {}
+    if srids:
+        for srid_val, status_val in (
+            db.query(Order.srid, Order.status)
+            .filter(Order.shop_id.in_(sids), Order.srid.in_(srids))
+            .all()
+        ):
+            status_map[srid_val] = status_val
     items = []
-    for r in q.all():
+    for r in rows:
         items.append({
             "id": r.id, "srid": r.srid,
             "shop_id": r.shop_id, "shop_name": shops.get(r.shop_id, ""),
@@ -198,6 +258,7 @@ def finance_orders(
             "warehouse": r.warehouse, "country": r.country, "sale_type": r.sale_type,
             "barcode": r.barcode, "category": r.category, "size": r.size,
             "currency": r.currency,
+            "order_status": status_map.get(r.srid),
         })
     return {"items": items, "total": total}
 
@@ -206,9 +267,14 @@ def finance_orders(
 def finance_other_fees(
     shop_type: str = Query(...),
     shop_id: Optional[int] = Query(None),
-    date_from: date = Query(...),
-    date_to: date = Query(...),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    order_date_from: Optional[date] = Query(None),
+    order_date_to: Optional[date] = Query(None),
     fee_type: Optional[str] = Query(None),
+    srid: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     accessible_shops: Optional[list[int]] = Depends(get_accessible_shop_ids),
     _=Depends(require_module("finance")),
@@ -216,17 +282,32 @@ def finance_other_fees(
     sids = _shop_ids_filter(db, shop_type, shop_id, accessible_shops)
     if not sids:
         return {"items": [], "total": 0}
-    q = db.query(FinanceOtherFee).filter(
-        FinanceOtherFee.shop_id.in_(sids),
-        FinanceOtherFee.sale_date.between(date_from, date_to),
-    )
+    q = db.query(FinanceOtherFee).filter(FinanceOtherFee.shop_id.in_(sids))
+    if date_from:
+        q = q.filter(FinanceOtherFee.sale_date >= date_from)
+    if date_to:
+        q = q.filter(FinanceOtherFee.sale_date <= date_to)
+    if order_date_from:
+        q = q.filter(FinanceOtherFee.order_date >= order_date_from)
+    if order_date_to:
+        q = q.filter(FinanceOtherFee.order_date <= order_date_to)
     if fee_type:
         q = q.filter(FinanceOtherFee.fee_type == fee_type)
+    if srid and srid.strip():
+        q = q.filter(FinanceOtherFee.srid.ilike(f"%{srid.strip()}%"))
     total = q.count()
+    rows = (
+        q.order_by(FinanceOtherFee.sale_date.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
     items = []
-    for f in q.order_by(FinanceOtherFee.sale_date.desc()).all():
+    for f in rows:
         items.append({
             "id": f.id, "shop_id": f.shop_id, "currency": f.currency,
+            "srid": f.srid or "",
+            "order_date": f.order_date.isoformat() if f.order_date else None,
             "sale_date": f.sale_date.isoformat() if f.sale_date else None,
             "fee_type": f.fee_type, "fee_description": f.fee_description,
             "amount": f.amount,
@@ -238,8 +319,10 @@ def finance_other_fees(
 def finance_reconciliation(
     shop_type: str = Query(...),
     shop_id: Optional[int] = Query(None),
-    date_from: date = Query(...),
-    date_to: date = Query(...),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    order_date_from: Optional[date] = Query(None),
+    order_date_to: Optional[date] = Query(None),
     db: Session = Depends(get_db),
     accessible_shops: Optional[list[int]] = Depends(get_accessible_shop_ids),
     _=Depends(require_module("finance")),
@@ -250,24 +333,33 @@ def finance_reconciliation(
 
     shops = {s.id: s.name for s in db.query(Shop).filter(Shop.id.in_(sids)).all()}
 
-    missing_in_orders_rows = (
+    missing_in_orders_q = (
         db.query(FinanceOrderRecord)
         .outerjoin(Order, and_(Order.srid == FinanceOrderRecord.srid,
                                Order.shop_id == FinanceOrderRecord.shop_id))
         .filter(
             Order.id.is_(None),
             FinanceOrderRecord.shop_id.in_(sids),
-            FinanceOrderRecord.sale_date.between(date_from, date_to),
-        ).all()
+        )
     )
+    if date_from:
+        missing_in_orders_q = missing_in_orders_q.filter(FinanceOrderRecord.sale_date >= date_from)
+    if date_to:
+        missing_in_orders_q = missing_in_orders_q.filter(FinanceOrderRecord.sale_date <= date_to)
+    if order_date_from:
+        missing_in_orders_q = missing_in_orders_q.filter(FinanceOrderRecord.order_date >= order_date_from)
+    if order_date_to:
+        missing_in_orders_q = missing_in_orders_q.filter(FinanceOrderRecord.order_date <= order_date_to)
+    missing_in_orders_rows = missing_in_orders_q.all()
     missing_in_orders = [
         {"srid": r.srid, "shop_name": shops.get(r.shop_id, ""),
          "sale_date": r.sale_date.isoformat() if r.sale_date else None,
+         "order_date": r.order_date.isoformat() if r.order_date else None,
          "net_to_seller": r.net_to_seller, "currency": r.currency}
         for r in missing_in_orders_rows
     ]
 
-    missing_in_finance_rows = (
+    missing_in_finance_q = (
         db.query(Order)
         .outerjoin(FinanceOrderRecord, and_(
             FinanceOrderRecord.srid == Order.srid,
@@ -276,14 +368,24 @@ def finance_reconciliation(
             FinanceOrderRecord.id.is_(None),
             Order.srid != "",
             Order.shop_id.in_(sids),
-            Order.created_at.between(date_from, date_to),
-        ).all()
+        )
     )
+    # Order 表用 created_at 作为下单日期，没有结算日期，所以这里只看下单日期 + 兼容历史的 created_at
+    if date_from:
+        missing_in_finance_q = missing_in_finance_q.filter(Order.created_at >= date_from)
+    if date_to:
+        missing_in_finance_q = missing_in_finance_q.filter(func.date(Order.created_at) <= date_to)
+    if order_date_from:
+        missing_in_finance_q = missing_in_finance_q.filter(Order.created_at >= order_date_from)
+    if order_date_to:
+        missing_in_finance_q = missing_in_finance_q.filter(func.date(Order.created_at) <= order_date_to)
+    missing_in_finance_rows = missing_in_finance_q.all()
     missing_in_finance = [
         {"wb_order_id": o.wb_order_id, "srid": o.srid,
          "shop_name": shops.get(o.shop_id, ""),
          "created_at": o.created_at.isoformat() if o.created_at else None,
-         "total_price": o.total_price}
+         "total_price": o.total_price,
+         "status": o.status}
         for o in missing_in_finance_rows
     ]
 
@@ -312,6 +414,34 @@ def finance_sync(
         db.add(log); db.commit()
         log_ids.append(log.id)
         _sync_pool.submit(_sync_shop_in_background, sid, body.date_from, body.date_to, user.id, log.id)
+
+    return {"sync_log_ids": log_ids}
+
+
+@router.post("/sync-all")
+def finance_sync_all(
+    body: SyncAllBody,
+    db: Session = Depends(get_db),
+    accessible_shops: Optional[list[int]] = Depends(get_accessible_shop_ids),
+    user: User = Depends(_require_admin),
+    _=Depends(require_module("finance")),
+):
+    """同步所选店铺的全部历史账单（突破 WB 单次 90 天上限）。"""
+    if accessible_shops is not None:
+        body.shop_ids = [s for s in body.shop_ids if s in accessible_shops]
+    if not body.shop_ids:
+        raise HTTPException(status_code=400, detail="No accessible shops selected")
+
+    today = date.today()
+    log_ids: list[int] = []
+    for sid in body.shop_ids:
+        log = FinanceSyncLog(
+            shop_id=sid, triggered_by="manual_all", user_id=user.id,
+            date_from=today, date_to=today, status="running",
+        )
+        db.add(log); db.commit()
+        log_ids.append(log.id)
+        _sync_pool.submit(_sync_shop_all_history_in_background, sid, user.id, log.id)
 
     return {"sync_log_ids": log_ids}
 

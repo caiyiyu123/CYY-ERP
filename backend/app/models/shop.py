@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from typing import Optional
-from sqlalchemy import String, Boolean, DateTime, Text
+from sqlalchemy import String, Boolean, DateTime, Date, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -18,3 +18,6 @@ class Shop(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # 后台慢速回溯游标：已回溯到的最早日期（NULL = 尚未开始）
+    orders_backfill_cursor: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    finance_backfill_cursor: Mapped[Optional[date]] = mapped_column(Date, nullable=True)

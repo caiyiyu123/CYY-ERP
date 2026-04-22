@@ -4,16 +4,32 @@
       <el-select v-model="filters.shop_id" placeholder="全部店铺" clearable style="width: 200px">
         <el-option v-for="s in shops" :key="s.id" :label="s.name" :value="s.id" />
       </el-select>
-      <el-date-picker
-        v-model="dateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        :clearable="false"
-        value-format="YYYY-MM-DD"
-        style="width: 240px"
-      />
+      <div class="ts-date-field">
+        <span class="ts-date-label">下单日期</span>
+        <el-date-picker
+          v-model="orderDateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          clearable
+          value-format="YYYY-MM-DD"
+          style="width: 240px"
+        />
+      </div>
+      <div class="ts-date-field">
+        <span class="ts-date-label">结算日期</span>
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          clearable
+          value-format="YYYY-MM-DD"
+          style="width: 240px"
+        />
+      </div>
       <div class="ts-date-shortcuts">
         <el-button size="small" @click="setRange('thisWeek')">本周</el-button>
         <el-button size="small" @click="setRange('lastWeek')">上周</el-button>
@@ -29,31 +45,37 @@
       <el-link type="primary" @click="goToMappings">去 SKU 映射</el-link>
     </div>
 
-    <el-divider content-position="left">📋 订单明细</el-divider>
+    <el-divider content-position="left">账单订单明细</el-divider>
     <FinanceOrdersTable
       :shop-type="shopType"
       :shop-id="filters.shop_id"
-      :date-from="dateRange[0]"
-      :date-to="dateRange[1]"
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      :order-date-from="orderDateFrom"
+      :order-date-to="orderDateTo"
       :currency="summary.currency"
       @reload="reloadAll"
     />
 
-    <el-divider content-position="left">💰 其他费用</el-divider>
+    <el-divider content-position="left">其他费用</el-divider>
     <FinanceOtherFeesTable
       :shop-type="shopType"
       :shop-id="filters.shop_id"
-      :date-from="dateRange[0]"
-      :date-to="dateRange[1]"
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      :order-date-from="orderDateFrom"
+      :order-date-to="orderDateTo"
       :currency="summary.currency"
     />
 
-    <el-divider content-position="left">🔎 对账</el-divider>
+    <el-divider content-position="left">对账</el-divider>
     <FinanceReconciliation
       :shop-type="shopType"
       :shop-id="filters.shop_id"
-      :date-from="dateRange[0]"
-      :date-to="dateRange[1]"
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      :order-date-from="orderDateFrom"
+      :order-date-to="orderDateTo"
     />
   </div>
 </template>
@@ -74,7 +96,12 @@ const props = defineProps({
 const router = useRouter()
 const shops = ref([])
 const filters = reactive({ shop_id: null })
-const dateRange = ref(getLast4WeeksRange())
+const dateRange = ref(null)
+const orderDateRange = ref(null)
+const dateFrom = computed(() => dateRange.value?.[0] || '')
+const dateTo = computed(() => dateRange.value?.[1] || '')
+const orderDateFrom = computed(() => orderDateRange.value?.[0] || '')
+const orderDateTo = computed(() => orderDateRange.value?.[1] || '')
 const summary = ref({ currency: 'RUB', order_count: 0, total_net_to_seller: 0, total_commission: 0,
   total_delivery_fee: 0, total_fine: 0, total_storage: 0, total_deduction: 0,
   total_purchase_cost: 0, total_net_profit: 0, total_other_fees: 0, final_profit: 0,
@@ -89,21 +116,22 @@ function getLast4WeeksRange() {
 }
 
 function setRange(key) {
+  // 快捷按钮作用于"下单日期"（默认主筛选）
   const today = new Date()
   const day = today.getDay() || 7
   const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   if (key === 'thisWeek') {
     const monday = new Date(today.getTime() - (day - 1) * 86400000)
-    dateRange.value = [fmt(monday), fmt(today)]
+    orderDateRange.value = [fmt(monday), fmt(today)]
   } else if (key === 'lastWeek') {
     const lastMon = new Date(today.getTime() - (day + 6) * 86400000)
     const lastSun = new Date(today.getTime() - day * 86400000)
-    dateRange.value = [fmt(lastMon), fmt(lastSun)]
+    orderDateRange.value = [fmt(lastMon), fmt(lastSun)]
   } else if (key === 'thisMonth') {
     const first = new Date(today.getFullYear(), today.getMonth(), 1)
-    dateRange.value = [fmt(first), fmt(today)]
+    orderDateRange.value = [fmt(first), fmt(today)]
   } else {
-    dateRange.value = getLast4WeeksRange()
+    orderDateRange.value = getLast4WeeksRange()
   }
 }
 
@@ -117,11 +145,12 @@ async function fetchShops() {
 async function fetchSummary() {
   loading.summary = true
   try {
-    const params = {
-      shop_type: props.shopType,
-      date_from: dateRange.value[0], date_to: dateRange.value[1],
-    }
+    const params = { shop_type: props.shopType }
     if (filters.shop_id) params.shop_id = filters.shop_id
+    if (dateFrom.value) params.date_from = dateFrom.value
+    if (dateTo.value) params.date_to = dateTo.value
+    if (orderDateFrom.value) params.order_date_from = orderDateFrom.value
+    if (orderDateTo.value) params.order_date_to = orderDateTo.value
     const { data } = await api.get('/api/finance/summary', { params })
     summary.value = data
   } catch (e) { console.warn('summary error', e) }
@@ -141,7 +170,7 @@ watch(() => props.shopType, () => {
   fetchShops()
   fetchSummary()
 })
-watch([() => filters.shop_id, dateRange], fetchSummary, { deep: true })
+watch([() => filters.shop_id, dateRange, orderDateRange], fetchSummary, { deep: true })
 
 onMounted(() => {
   fetchShops()
@@ -154,7 +183,9 @@ onUnmounted(() => window.removeEventListener('finance-sync-done', reloadAll))
 
 <style scoped>
 .ts-tab { padding: 8px 0; }
-.ts-filters { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.ts-filters { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 16px; flex-wrap: wrap; }
+.ts-date-field { display: flex; flex-direction: column; gap: 4px; }
+.ts-date-label { font-size: 12px; color: #64748b; line-height: 1; }
 .ts-date-shortcuts { display: flex; gap: 6px; }
 .ts-missing-banner {
   padding: 10px 14px; margin: 12px 0;

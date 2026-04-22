@@ -65,11 +65,12 @@ def _fetch_orders_window(client, url: str, api_token: str, date_from_ts: int) ->
     return all_orders
 
 
-def fetch_orders(api_token: str, date_from: Optional[datetime] = None) -> list[dict]:
+def fetch_orders(api_token: str, date_from: Optional[datetime] = None,
+                 date_to: Optional[datetime] = None) -> list[dict]:
     """GET /api/v3/orders — fetch historical orders with pagination.
 
     WB API returns a ~30-day window per call, so we loop in 30-day chunks
-    from date_from to now to get the full range.
+    from date_from to date_to (default: now) to get the full range.
     """
     from datetime import timedelta
 
@@ -78,14 +79,20 @@ def fetch_orders(api_token: str, date_from: Optional[datetime] = None) -> list[d
 
     if not date_from:
         date_from = now - timedelta(days=30)
+    if not date_to:
+        date_to = now
 
+    end_iso = date_to.strftime("%Y-%m-%dT%H:%M:%S") if date_to < now else None
     all_orders = {}  # deduplicate by order id
     try:
         with httpx.Client(timeout=30) as client:
             window_start = date_from
-            while window_start < now:
+            while window_start < date_to:
                 ts = int(window_start.timestamp())
                 orders = _fetch_orders_window(client, url, api_token, ts)
+                # Backfill 场景：date_to 早于 now 时，裁掉超出 date_to 的订单
+                if end_iso is not None:
+                    orders = [o for o in orders if (o.get("createdAt") or "") < end_iso]
                 print(f"[WB API] fetch_orders window: dateFrom={window_start.strftime('%Y-%m-%d')}, got {len(orders)} orders")
                 for o in orders:
                     oid = o.get("id")
@@ -987,6 +994,8 @@ def fetch_finance_report(api_token: str, date_from: str, date_to: str) -> list[d
                     retries += 1
                     continue
                 break
+        if resp.status_code == 204:
+            break
         if resp.status_code != 200:
             raise RuntimeError(f"WB finance report failed: {resp.status_code} {resp.text[:200]}")
         page = resp.json() or []

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta, date
+from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -173,7 +174,10 @@ def _build_image_lookup(db: Session) -> tuple[dict, dict]:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
-def sync_shop_orders(db: Session, shop: Shop) -> list[dict]:
+def sync_shop_orders(db: Session, shop: Shop, *,
+                     date_from: Optional[datetime] = None,
+                     date_to: Optional[datetime] = None,
+                     backfill: bool = False) -> list[dict]:
     """Sync orders for a shop. Returns product cards for reuse by other sync functions.
 
     Flow:
@@ -181,23 +185,38 @@ def sync_shop_orders(db: Session, shop: Shop) -> list[dict]:
       2. Sync FBS orders from Marketplace API
       3. Sync FBW orders from Statistics + Report Detail
       4. Update FBS order statuses
+
+    date_from: 历史拉取起点（UTC datetime），None 时默认 now - 90 天。
+    date_to:   历史拉取终点（UTC datetime），None 时为 now。
+    backfill:  True 时跳过 Statistics orders/sales 和状态更新
+               （老订单 lastChangeDate 早已过期，拉了也没意义；状态已终止）。
     """
     api_token = decrypt_token(shop.api_token)
+    now_utc = datetime.now(timezone.utc)
+    if date_from is None:
+        date_from = now_utc - timedelta(days=90)
+    if date_to is None:
+        date_to = now_utc
 
     # 1. Fetch shared data
     cards = fetch_cards(api_token)
     nm_card_map = _build_card_map(cards)
-    stat_orders = fetch_statistics_orders(api_token)
-    stat_sales = fetch_statistics_sales(api_token)
+    if backfill:
+        stat_orders, stat_sales = [], []
+    else:
+        stat_orders = fetch_statistics_orders(api_token, date_from=date_from)
+        stat_sales = fetch_statistics_sales(api_token, date_from=date_from)
 
     # 2. Sync FBS orders
-    _sync_fbs_orders(db, shop, api_token, nm_card_map, stat_orders, stat_sales)
+    _sync_fbs_orders(db, shop, api_token, nm_card_map, stat_orders, stat_sales,
+                     date_from=date_from, date_to=date_to)
 
     # 3. Fetch Report Detail (shared by FBW sync and FBS price fill)
-    rd_date_from = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
-    rd_date_to = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    rd_date_from = date_from.strftime("%Y-%m-%d")
+    rd_date_to = date_to.strftime("%Y-%m-%d")
     report_data = fetch_report_detail(api_token, rd_date_from, rd_date_to)
-    print(f"[Sync] Report Detail: {len(report_data)} records for shop {shop.id}")
+    print(f"[Sync] Report Detail: {len(report_data)} records for shop {shop.id} "
+          f"[{rd_date_from}~{rd_date_to}{' BACKFILL' if backfill else ''}]")
 
     # 4. Sync FBW orders
     _sync_fbw_orders(db, shop, api_token, nm_card_map, stat_orders, stat_sales, report_data)
@@ -205,7 +224,12 @@ def sync_shop_orders(db: Session, shop: Shop) -> list[dict]:
     # 5. Fill FBS prices from Report Detail (Marketplace API often returns 0 for old orders)
     _fill_fbs_prices_from_report(db, shop, report_data)
 
-    # 6. Update statuses for active FBS orders
+    # 6. Update statuses for active FBS orders — skip in backfill mode (老订单早已终止)
+    if backfill:
+        shop.last_sync_at = now_utc
+        db.commit()
+        return cards
+
     terminal_statuses = ("completed", "cancelled", "returned", "rejected")
     active_orders = db.query(Order).filter(
         Order.shop_id == shop.id,
@@ -227,18 +251,25 @@ def sync_shop_orders(db: Session, shop: Shop) -> list[dict]:
 
 def _sync_fbs_orders(db: Session, shop: Shop, api_token: str,
                      nm_card_map: dict, stat_orders: list[dict],
-                     stat_sales: list[dict]):
-    """Sync FBS orders from Marketplace API (90 days).
+                     stat_sales: list[dict],
+                     *, date_from: Optional[datetime] = None,
+                     date_to: Optional[datetime] = None):
+    """Sync FBS orders from Marketplace API.
 
     Price is resolved at insert time:
       1. From Marketplace API (salePrice/convertedFinalPrice)
       2. Fallback: from Statistics Orders (by srid match)
       3. Fallback: from Statistics Sales (by srid match)
+
+    date_from/date_to: 时间窗（UTC），用于回溯时拉取旧历史窗口。
     """
     # Fetch FBS orders from Marketplace API
-    fbs_date_from = datetime.now(timezone.utc) - timedelta(days=90)
-    historical = fetch_orders(api_token, date_from=fbs_date_from)
-    new_orders = fetch_new_orders(api_token)
+    now_utc = datetime.now(timezone.utc)
+    fbs_date_from = date_from or (now_utc - timedelta(days=90))
+    fbs_date_to = date_to or now_utc
+    historical = fetch_orders(api_token, date_from=fbs_date_from, date_to=fbs_date_to)
+    # 回溯旧窗口时不拉 new_orders（只看当前 pending 队列，对老订单无意义）
+    new_orders = fetch_new_orders(api_token) if fbs_date_to >= now_utc - timedelta(hours=1) else []
 
     # Merge: deduplicate by id, new orders take priority
     all_raw = {}

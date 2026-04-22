@@ -61,6 +61,8 @@ class FinanceOtherFee(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     shop_id: Mapped[int] = mapped_column(Integer, ForeignKey("shops.id"), index=True)
     currency: Mapped[str] = mapped_column(String(10))
+    srid: Mapped[str] = mapped_column(String(200), default="", index=True)
+    order_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     sale_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     report_period_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     report_period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
