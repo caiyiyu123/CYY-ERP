@@ -65,7 +65,10 @@
         :loading="productLoading"
         @change="onProductChange"
       >
-        <el-option v-for="p in productOptions" :key="p.id" :label="`${p.sku} ${p.name}`" :value="p.id" />
+        <el-option v-for="p in productOptions" :key="p.id" :label="p.sku" :value="p.id">
+          <span>{{ p.sku }}</span>
+          <span style="color: #909399; margin-left: 8px; font-size: 12px">{{ p.name }}</span>
+        </el-option>
       </el-select>
     </div>
 
