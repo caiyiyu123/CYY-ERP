@@ -46,30 +46,34 @@
           <div class="info-cell"><el-input-number v-model="form.width_cm" :precision="1" :step="1" :min="0" size="small" :controls="false" /></div>
           <div class="info-cell"><el-input-number v-model="form.height_cm" :precision="1" :step="1" :min="0" size="small" :controls="false" /></div>
         </div>
-      </div>
-    </div>
 
-    <!-- ========== 商品名称 + SKU 一行 ========== -->
-    <div class="name-sku-row">
-      <span class="label">商品名称</span>
-      <el-input v-model="form.name" size="small" placeholder="商品名称" />
-      <span class="label">SKU</span>
-      <el-select
-        v-model="form.product_id"
-        size="small"
-        placeholder="搜索 SKU (可留空)"
-        filterable
-        remote
-        clearable
-        :remote-method="searchProducts"
-        :loading="productLoading"
-        @change="onProductChange"
-      >
-        <el-option v-for="p in productOptions" :key="p.id" :label="p.sku" :value="p.id">
-          <span>{{ p.sku }}</span>
-          <span style="color: #909399; margin-left: 8px; font-size: 12px">{{ p.name }}</span>
-        </el-option>
-      </el-select>
+        <!-- 第 3 组:商品名称 + SKU (label 内联) -->
+        <div class="info-row name-sku">
+          <div class="info-cell label-inline">商品名称</div>
+          <div class="info-cell" style="grid-column: span 2">
+            <el-input v-model="form.name" size="small" placeholder="商品名称" />
+          </div>
+          <div class="info-cell label-inline">SKU</div>
+          <div class="info-cell">
+            <el-select
+              v-model="form.product_id"
+              size="small"
+              placeholder="搜索 SKU"
+              filterable
+              remote
+              clearable
+              :remote-method="searchProducts"
+              :loading="productLoading"
+              @change="onProductChange"
+            >
+              <el-option v-for="p in productOptions" :key="p.id" :label="p.sku" :value="p.id">
+                <span>{{ p.sku }}</span>
+                <span style="color: #909399; margin-left: 8px; font-size: 12px">{{ p.name }}</span>
+              </el-option>
+            </el-select>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ========== 定价行表格 ========== -->
@@ -371,24 +375,13 @@ const profitColor = computed(() => {
   width: 100%;
 }
 
-/* ========== 商品名称 + SKU 行 ========== */
-.name-sku-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.name-sku-row .label {
-  font-size: 12px;
+/* label-inline: 嵌在 info-cell 里当 label 用 (商品名称/SKU 那行) */
+.info-cell.label-inline {
+  background: #f5f7fa;
   color: #606266;
+  font-size: 11px;
   font-weight: 500;
-  white-space: nowrap;
-}
-
-.name-sku-row .el-input,
-.name-sku-row .el-select {
-  flex: 1;
+  justify-content: center;
 }
 
 /* ========== 定价行表格 ========== */
