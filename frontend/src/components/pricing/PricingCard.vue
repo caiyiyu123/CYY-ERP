@@ -88,13 +88,86 @@
         </el-form>
       </el-col>
 
-      <!-- 右侧: 定价区 (Task 12 实现) -->
       <el-col :span="14">
-        <div style="border-left: 1px solid #ebeef5; padding-left: 16px; min-height: 300px; color: #909399">
-          WB 跨境 FBS 定价区 (Task 12 实现)
-          <div style="margin-top: 12px; font-size: 12px">
-            body { calc 已就绪, 可参考 }:<br/>
-            体积 {{ calc.volume }}, 密度 {{ calc.density }}, 利润 {{ calc.profit }}
+        <div style="border-left: 1px solid #ebeef5; padding-left: 16px">
+          <div style="font-weight: 600; font-size: 14px; margin-bottom: 12px; color: #303133">
+            WB 跨境 FBS
+          </div>
+
+          <!-- 第 1 行: 定价双向 + 折扣 -->
+          <el-row :gutter="12">
+            <el-col :span="8">
+              <label style="font-size: 12px; color: #606266">定价 (RUB)</label>
+              <el-input
+                :model-value="platform0.price_rub"
+                type="number"
+                step="1"
+                size="default"
+                @input="onChangeRub"
+              />
+            </el-col>
+            <el-col :span="8">
+              <label style="font-size: 12px; color: #606266">定价 (RMB)</label>
+              <el-input
+                :model-value="platform0.price_rmb"
+                type="number"
+                step="0.1"
+                size="default"
+                @input="onChangeRmb"
+              />
+            </el-col>
+            <el-col :span="8">
+              <label style="font-size: 12px; color: #606266">平台折扣 (%)</label>
+              <el-input-number
+                v-model="platform0.discount_pct"
+                :precision="1" :step="1" :min="0" :max="100"
+                style="width: 100%"
+              />
+            </el-col>
+          </el-row>
+
+          <!-- 第 2 行: 派生字段 -->
+          <el-descriptions :column="2" border size="small" style="margin-top: 12px">
+            <el-descriptions-item label="前台售价 (RUB)">
+              {{ fmt(calc.frontPriceRub, 2) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="头程单价 (USD)">
+              {{ fmt(calc.headPriceUsd, 2) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="头程费用 (¥)">
+              {{ fmt(calc.headFee, 2) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="订单处理费 (¥)">
+              {{ fmt(calc.orderFee, 2) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="尾程运费 (¥)">
+              {{ fmt(calc.tailFee, 2) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="佣金率 (%)">
+              {{ fmt(calc.commissionRatePct, 2) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="佣金 (¥)">
+              {{ fmt(calc.commission, 2) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="提现手续费 (¥)">
+              {{ fmt(calc.withdrawalFee, 2) }}
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <!-- 利润汇总 -->
+          <div style="margin-top: 12px; padding: 10px; background: #f5f7fa; border-radius: 4px; display: flex; justify-content: space-around">
+            <div>
+              <div style="font-size: 12px; color: #909399">利润 (¥)</div>
+              <div style="font-size: 18px; font-weight: 600" :style="{ color: profitColor }">
+                {{ fmt(calc.profit, 2) }}
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 12px; color: #909399">利润率</div>
+              <div style="font-size: 18px; font-weight: 600" :style="{ color: profitColor }">
+                {{ calc.profitRatePct != null ? calc.profitRatePct.toFixed(1) + '%' : '-' }}
+              </div>
+            </div>
           </div>
         </div>
       </el-col>
@@ -213,4 +286,32 @@ function imgUrl(u) {
   if (u.startsWith('http')) return u
   return u
 }
+
+// ======== 双向换算 + 格式化 ========
+
+function onChangeRub(v) {
+  const num = Number(v) || 0
+  form.platforms[0].price_rub = num
+  form.platforms[0].price_rmb = props.params.rate_rub_cny
+    ? Number((num * props.params.rate_rub_cny).toFixed(2))
+    : 0
+}
+
+function onChangeRmb(v) {
+  const num = Number(v) || 0
+  form.platforms[0].price_rmb = num
+  form.platforms[0].price_rub = props.params.rate_rub_cny
+    ? Number((num / props.params.rate_rub_cny).toFixed(2))
+    : 0
+}
+
+function fmt(v, digits = 2) {
+  return v == null || Number.isNaN(v) ? '-' : Number(v).toFixed(digits)
+}
+
+const profitColor = computed(() => {
+  const p = calc.value.profit
+  if (p == null) return '#909399'
+  return p >= 0 ? '#67c23a' : '#f56c6c'
+})
 </script>
