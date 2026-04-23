@@ -9,5 +9,6 @@ from app.models.commission import CommissionTable, CommissionRate, ShippingTempl
 from app.models.purchase_plan import PurchasePlan, PurchasePlanItem
 from app.models.ai_api_key import AiApiKey
 from app.models.finance import FinanceOrderRecord, FinanceOtherFee, FinanceSyncLog
+from app.models.pricing import PricingItem, PricingPlatform  # noqa: F401
 
-__all__ = ["User", "Shop", "Product", "SkuMapping", "Order", "OrderItem", "OrderStatusLog", "Inventory", "AdCampaign", "AdDailyStat", "SystemSetting", "CommissionTable", "CommissionRate", "ShippingTemplate", "ShippingRate", "PurchasePlan", "PurchasePlanItem", "AiApiKey", "FinanceOrderRecord", "FinanceOtherFee", "FinanceSyncLog"]
+__all__ = ["User", "Shop", "Product", "SkuMapping", "Order", "OrderItem", "OrderStatusLog", "Inventory", "AdCampaign", "AdDailyStat", "SystemSetting", "CommissionTable", "CommissionRate", "ShippingTemplate", "ShippingRate", "PurchasePlan", "PurchasePlanItem", "AiApiKey", "FinanceOrderRecord", "FinanceOtherFee", "FinanceSyncLog", "PricingItem", "PricingPlatform"]
