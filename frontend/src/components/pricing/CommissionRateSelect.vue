@@ -13,9 +13,13 @@
     <el-option
       v-for="r in options"
       :key="r.id"
-      :label="`${r.category} / ${r.product_name} (${(r.rate * 100).toFixed(2)}%)`"
+      :label="`${r.product_name} (${(r.rate * 100).toFixed(2)}%)`"
       :value="r.id"
-    />
+    >
+      <span style="color: #909399; font-size: 12px">{{ r.category }}</span>
+      <span style="margin-left: 8px">{{ r.product_name }}</span>
+      <span style="color: #409eff; margin-left: 8px; font-size: 12px">{{ (r.rate * 100).toFixed(2) }}%</span>
+    </el-option>
   </el-select>
 </template>
 
