@@ -31,10 +31,10 @@
           <div class="info-cell readonly">{{ calc.density != null ? calc.density.toFixed(2) : '-' }}</div>
         </div>
 
-        <!-- 第 2 组:商品名称 + SKU + 采购成本 + 尺寸 (7 列) -->
+        <!-- 第 2 组:SKU + 商品名称 + 采购成本 + 尺寸 (7 列) -->
         <div class="info-row header info-row-7">
-          <div class="info-cell">商品名称</div>
           <div class="info-cell">SKU</div>
+          <div class="info-cell">商品名称</div>
           <div class="info-cell">采购成本 (¥)</div>
           <div class="info-cell">重量 (kg)</div>
           <div class="info-cell">长 (cm)</div>
@@ -42,7 +42,6 @@
           <div class="info-cell">高 (cm)</div>
         </div>
         <div class="info-row info-row-7">
-          <div class="info-cell"><el-input v-model="form.name" size="small" placeholder="商品名称" /></div>
           <div class="info-cell">
             <el-select
               v-model="form.product_id"
@@ -61,6 +60,7 @@
               </el-option>
             </el-select>
           </div>
+          <div class="info-cell"><el-input v-model="form.name" size="small" placeholder="商品名称" /></div>
           <div class="info-cell"><el-input-number v-model="form.purchase_cost" :precision="2" :step="1" :min="0" size="small" :controls="false" /></div>
           <div class="info-cell"><el-input-number v-model="form.weight_kg" :precision="3" :step="0.1" :min="0" size="small" :controls="false" /></div>
           <div class="info-cell"><el-input-number v-model="form.length_cm" :precision="1" :step="1" :min="0" size="small" :controls="false" /></div>
@@ -332,9 +332,9 @@ const profitColor = computed(() => {
   border-bottom: 1px solid #ebeef5;
 }
 
-/* 第 2 组 7 列 (商品名称 / SKU / 采购 / 重 / 长 / 宽 / 高) */
+/* 第 2 组 7 列 (SKU / 商品名称 / 采购 / 重 / 长 / 宽 / 高) */
 .info-row.info-row-7 {
-  grid-template-columns: 1.8fr 1.5fr 1fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 1.2fr 2fr 1fr 1fr 1fr 1fr 1fr;
 }
 
 .info-row:last-child {
