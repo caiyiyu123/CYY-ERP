@@ -216,18 +216,28 @@ watch(() => form.wb_cross_rate_id, async (id) => {
 }, { immediate: true })
 
 // ======== SKU/Product 搜索 ========
+// 后端 /api/products 直接返回全量数组,无分页和搜索参数,前端本地过滤
 const productOptions = ref([])
 const productLoading = ref(false)
+const allProducts = ref([])
+
+async function loadAllProducts() {
+  if (allProducts.value.length > 0) return
+  productLoading.value = true
+  try {
+    const { data } = await api.get('/api/products')
+    allProducts.value = Array.isArray(data) ? data : []
+  } catch { allProducts.value = [] } finally { productLoading.value = false }
+}
 
 async function searchProducts(query) {
   if (!query) { productOptions.value = []; return }
-  productLoading.value = true
-  try {
-    const { data } = await api.get('/api/products', {
-      params: { page: 1, page_size: 20, search: query },
-    })
-    productOptions.value = data.products || data.items || []
-  } catch { productOptions.value = [] } finally { productLoading.value = false }
+  await loadAllProducts()
+  const q = query.toLowerCase()
+  productOptions.value = allProducts.value.filter(p =>
+    (p.sku || '').toLowerCase().includes(q) ||
+    (p.name || '').toLowerCase().includes(q)
+  ).slice(0, 20)
 }
 
 async function onProductChange(productId) {
