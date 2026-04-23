@@ -15,6 +15,7 @@ const routes = [
       { path: 'shop-products', name: 'ShopProducts', meta: { module: 'products', title: '产品管理' }, component: () => import('../views/ShopProducts.vue') },
       { path: 'products', name: 'Products', meta: { module: 'products', title: '商品管理' }, component: () => import('../views/Products.vue') },
       { path: 'purchase-plan', name: 'PurchasePlan', meta: { module: 'purchase_plan', title: '采购计划' }, component: () => import('../views/PurchasePlan.vue') },
+      { path: 'pricing', name: 'Pricing', meta: { module: 'pricing', title: '定价表' }, component: () => import('../views/Pricing.vue') },
       { path: 'ads', name: 'AdsOverview', meta: { module: 'ads', title: '推广数据' }, component: () => import('../views/AdsOverview.vue') },
       { path: 'ads/:id', name: 'AdDetail', meta: { module: 'ads', title: '推广详情' }, component: () => import('../views/AdDetail.vue') },
       { path: 'finance', name: 'Finance', meta: { module: 'finance', title: '财务统计' }, component: () => import('../views/Finance.vue') },

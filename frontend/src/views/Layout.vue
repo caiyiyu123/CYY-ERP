@@ -41,6 +41,12 @@
             <span>采购计划</span>
           </router-link>
         </el-menu-item>
+        <el-menu-item v-if="hasPerm('pricing')" index="/pricing">
+          <router-link to="/pricing" class="ts-nav-link">
+            <el-icon><Money /></el-icon>
+            <span>定价表</span>
+          </router-link>
+        </el-menu-item>
         <el-menu-item v-if="hasPerm('ads')" index="/ads">
           <router-link to="/ads" class="ts-nav-link">
             <el-icon><TrendCharts /></el-icon>
