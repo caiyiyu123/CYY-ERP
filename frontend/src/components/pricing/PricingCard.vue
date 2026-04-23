@@ -1,182 +1,118 @@
 <template>
-  <el-card shadow="hover" class="pricing-card" :body-style="{ padding: '10px 12px' }">
-    <el-row :gutter="12">
-      <!-- 左侧: 商品信息 -->
-      <el-col :span="10">
-        <div style="display: flex; gap: 8px; margin-bottom: 6px">
-          <el-select
-            v-model="form.product_id"
-            placeholder="搜索 SKU (可留空)"
-            filterable
-            remote
-            clearable
-            size="small"
-            :remote-method="searchProducts"
-            :loading="productLoading"
-            style="flex: 1"
-            @change="onProductChange"
-          >
-            <el-option
-              v-for="p in productOptions"
-              :key="p.id"
-              :label="`${p.sku} ${p.name}`"
-              :value="p.id"
-            />
-          </el-select>
-          <el-input v-model="form.name" placeholder="商品名称" size="small" style="flex: 1" />
+  <el-card shadow="hover" class="pricing-card" :body-style="{ padding: '10px' }">
+    <!-- ========== 顶部:商品信息区 (Excel 风格表格) ========== -->
+    <div class="product-info">
+      <!-- 左侧:图片 -->
+      <div class="product-img-cell">
+        <el-image
+          v-if="form.image_url"
+          :src="imgUrl(form.image_url)"
+          fit="contain"
+          style="width: 100%; height: 100%"
+        />
+        <span v-else class="no-img">无图</span>
+      </div>
+
+      <!-- 右侧:信息表格 -->
+      <div class="info-table">
+        <!-- 第 1 组:类目 + 体积/密度 -->
+        <div class="info-row header">
+          <div class="info-cell">WB本土类目</div>
+          <div class="info-cell">WB跨境类目</div>
+          <div class="info-cell">OZON本土类目</div>
+          <div class="info-cell">体积 (m³)</div>
+          <div class="info-cell">密度 (kg/m³)</div>
+        </div>
+        <div class="info-row">
+          <div class="info-cell"><CommissionRateSelect v-model="form.wb_local_rate_id" platform="wb_local" /></div>
+          <div class="info-cell"><CommissionRateSelect v-model="form.wb_cross_rate_id" platform="wb_cross_border" /></div>
+          <div class="info-cell"><CommissionRateSelect v-model="form.ozon_local_rate_id" platform="ozon_local" /></div>
+          <div class="info-cell readonly">{{ calc.volume != null ? calc.volume.toFixed(4) : '-' }}</div>
+          <div class="info-cell readonly">{{ calc.density != null ? calc.density.toFixed(2) : '-' }}</div>
         </div>
 
-        <div style="display: flex; gap: 8px; align-items: flex-start">
-          <!-- 图片 -->
-          <div style="width: 60px; height: 60px; border: 1px dashed #dcdfe6; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0">
-            <el-image
-              v-if="form.image_url"
-              :src="imgUrl(form.image_url)"
-              fit="contain"
-              style="width: 100%; height: 100%"
-            />
-            <span v-else style="color: #ccc; font-size: 11px">无图</span>
-          </div>
-
-          <el-form label-width="80px" label-position="top" size="small" style="flex: 1">
-            <el-row :gutter="6">
-              <el-col :span="12">
-                <el-form-item label="采购成本 (¥)">
-                  <el-input-number v-model="form.purchase_cost" :precision="2" :step="1" :min="0" size="small" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="重量 (kg)">
-                  <el-input-number v-model="form.weight_kg" :precision="3" :step="0.1" :min="0" size="small" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="6">
-              <el-col :span="8">
-                <el-form-item label="长 (cm)">
-                  <el-input-number v-model="form.length_cm" :precision="1" :step="1" :min="0" size="small" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="宽 (cm)">
-                  <el-input-number v-model="form.width_cm" :precision="1" :step="1" :min="0" size="small" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="高 (cm)">
-                  <el-input-number v-model="form.height_cm" :precision="1" :step="1" :min="0" size="small" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
+        <!-- 第 2 组:采购成本 + 尺寸 -->
+        <div class="info-row header">
+          <div class="info-cell">采购成本 (¥)</div>
+          <div class="info-cell">重量 (kg)</div>
+          <div class="info-cell">长 (cm)</div>
+          <div class="info-cell">宽 (cm)</div>
+          <div class="info-cell">高 (cm)</div>
         </div>
-        <div style="color: #909399; font-size: 12px; margin-top: 2px">
-          体积 {{ calc.volume != null ? calc.volume.toFixed(4) : '-' }} m³
-          | 密度 {{ calc.density != null ? calc.density.toFixed(2) : '-' }} kg/m³
+        <div class="info-row">
+          <div class="info-cell"><el-input-number v-model="form.purchase_cost" :precision="2" :step="1" :min="0" size="small" controls-position="right" /></div>
+          <div class="info-cell"><el-input-number v-model="form.weight_kg" :precision="3" :step="0.1" :min="0" size="small" controls-position="right" /></div>
+          <div class="info-cell"><el-input-number v-model="form.length_cm" :precision="1" :step="1" :min="0" size="small" controls-position="right" /></div>
+          <div class="info-cell"><el-input-number v-model="form.width_cm" :precision="1" :step="1" :min="0" size="small" controls-position="right" /></div>
+          <div class="info-cell"><el-input-number v-model="form.height_cm" :precision="1" :step="1" :min="0" size="small" controls-position="right" /></div>
         </div>
+      </div>
+    </div>
 
-        <!-- 三个类目 -->
-        <el-form label-width="90px" size="small" style="margin-top: 6px">
-          <el-form-item label="WB 本土类目">
-            <CommissionRateSelect v-model="form.wb_local_rate_id" platform="wb_local" />
-          </el-form-item>
-          <el-form-item label="WB 跨境类目">
-            <CommissionRateSelect v-model="form.wb_cross_rate_id" platform="wb_cross_border" />
-          </el-form-item>
-          <el-form-item label="OZON 本土类目">
-            <CommissionRateSelect v-model="form.ozon_local_rate_id" platform="ozon_local" />
-          </el-form-item>
-        </el-form>
-      </el-col>
+    <!-- ========== 商品名称 + SKU 一行 ========== -->
+    <div class="name-sku-row">
+      <span class="label">商品名称</span>
+      <el-input v-model="form.name" size="small" placeholder="商品名称" />
+      <span class="label">SKU</span>
+      <el-select
+        v-model="form.product_id"
+        size="small"
+        placeholder="搜索 SKU (可留空)"
+        filterable
+        remote
+        clearable
+        :remote-method="searchProducts"
+        :loading="productLoading"
+        @change="onProductChange"
+      >
+        <el-option v-for="p in productOptions" :key="p.id" :label="`${p.sku} ${p.name}`" :value="p.id" />
+      </el-select>
+    </div>
 
-      <el-col :span="14">
-        <div style="border-left: 1px solid #ebeef5; padding-left: 12px">
-          <div style="font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #303133">
-            WB 跨境 FBS
-          </div>
+    <!-- ========== 定价行表格 ========== -->
+    <div class="pricing-table-wrap">
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th class="platform-col">平台</th>
+            <th>定价 (RUB)</th>
+            <th>定价 (RMB)</th>
+            <th>平台折扣</th>
+            <th class="highlight">前台售价 (RUB)</th>
+            <th>利润 (¥)</th>
+            <th>利润率</th>
+            <th>头程单价 (USD)</th>
+            <th>头程费用 (¥)</th>
+            <th>订单处理费 (¥)</th>
+            <th>尾程运费 (¥)</th>
+            <th>佣金率 (%)</th>
+            <th>佣金 (¥)</th>
+            <th>提现手续费 (¥)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="platform-col">WB 跨境 FBS</td>
+            <td><el-input :model-value="platform0.price_rub" type="number" size="small" @input="onChangeRub" /></td>
+            <td><el-input :model-value="platform0.price_rmb" type="number" size="small" @input="onChangeRmb" /></td>
+            <td><el-input-number v-model="platform0.discount_pct" :precision="1" :step="1" :min="0" :max="100" size="small" controls-position="right" /></td>
+            <td class="highlight">{{ fmt(calc.frontPriceRub, 2) }}</td>
+            <td :style="{ color: profitColor, fontWeight: 600 }">{{ fmt(calc.profit, 2) }}</td>
+            <td :style="{ color: profitColor, fontWeight: 600 }">{{ calc.profitRatePct != null ? calc.profitRatePct.toFixed(1) + '%' : '-' }}</td>
+            <td>{{ fmt(calc.headPriceUsd, 2) }}</td>
+            <td>{{ fmt(calc.headFee, 2) }}</td>
+            <td>{{ fmt(calc.orderFee, 2) }}</td>
+            <td>{{ fmt(calc.tailFee, 2) }}</td>
+            <td>{{ fmt(calc.commissionRatePct, 2) }}</td>
+            <td>{{ fmt(calc.commission, 2) }}</td>
+            <td>{{ fmt(calc.withdrawalFee, 2) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-          <!-- 第 1 行: 定价双向 + 折扣 -->
-          <el-row :gutter="8">
-            <el-col :span="8">
-              <label style="font-size: 12px; color: #606266">定价 (RUB)</label>
-              <el-input
-                :model-value="platform0.price_rub"
-                type="number"
-                step="1"
-                size="small"
-                @input="onChangeRub"
-              />
-            </el-col>
-            <el-col :span="8">
-              <label style="font-size: 12px; color: #606266">定价 (RMB)</label>
-              <el-input
-                :model-value="platform0.price_rmb"
-                type="number"
-                step="0.1"
-                size="small"
-                @input="onChangeRmb"
-              />
-            </el-col>
-            <el-col :span="8">
-              <label style="font-size: 12px; color: #606266">平台折扣 (%)</label>
-              <el-input-number
-                v-model="platform0.discount_pct"
-                :precision="1" :step="1" :min="0" :max="100"
-                size="small"
-                style="width: 100%"
-              />
-            </el-col>
-          </el-row>
-
-          <!-- 第 2 行: 派生字段 -->
-          <el-descriptions :column="2" border size="small" class="compact-desc" style="margin-top: 8px">
-            <el-descriptions-item label="前台售价 (RUB)">
-              {{ fmt(calc.frontPriceRub, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="头程单价 (USD)">
-              {{ fmt(calc.headPriceUsd, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="头程费用 (¥)">
-              {{ fmt(calc.headFee, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="订单处理费 (¥)">
-              {{ fmt(calc.orderFee, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="尾程运费 (¥)">
-              {{ fmt(calc.tailFee, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="佣金率 (%)">
-              {{ fmt(calc.commissionRatePct, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="佣金 (¥)">
-              {{ fmt(calc.commission, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="提现手续费 (¥)">
-              {{ fmt(calc.withdrawalFee, 2) }}
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <!-- 利润汇总 -->
-          <div style="margin-top: 8px; padding: 6px 10px; background: #f5f7fa; border-radius: 4px; display: flex; justify-content: space-around">
-            <div>
-              <div style="font-size: 11px; color: #909399">利润 (¥)</div>
-              <div style="font-size: 16px; font-weight: 600; line-height: 1.2" :style="{ color: profitColor }">
-                {{ fmt(calc.profit, 2) }}
-              </div>
-            </div>
-            <div>
-              <div style="font-size: 11px; color: #909399">利润率</div>
-              <div style="font-size: 16px; font-weight: 600; line-height: 1.2" :style="{ color: profitColor }">
-                {{ calc.profitRatePct != null ? calc.profitRatePct.toFixed(1) + '%' : '-' }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </el-col>
-    </el-row>
-
-    <!-- 操作栏 -->
-    <div style="margin-top: 6px; display: flex; justify-content: flex-end; gap: 8px">
+    <!-- ========== 操作栏 ========== -->
+    <div class="action-bar">
       <el-button v-if="isDraft" size="small" @click="$emit('cancel')">取消</el-button>
       <el-popconfirm v-if="!isDraft" title="确定删除此方案?" @confirm="remove">
         <template #reference>
@@ -330,19 +266,186 @@ const profitColor = computed(() => {
 </script>
 
 <style scoped>
-.pricing-card :deep(.el-form-item) {
-  margin-bottom: 4px;
-}
-.pricing-card :deep(.el-form-item__label) {
-  padding-bottom: 0;
-  line-height: 22px;
+.pricing-card {
   font-size: 12px;
 }
-.pricing-card :deep(.compact-desc .el-descriptions__cell) {
-  padding: 4px 8px !important;
+
+/* ========== 商品信息区 ========== */
+.product-info {
+  display: flex;
+  border: 1px solid #dcdfe6;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.product-img-cell {
+  width: 100px;
+  flex-shrink: 0;
+  background: #f5f7fa;
+  border-right: 1px solid #dcdfe6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.no-img {
+  color: #c0c4cc;
   font-size: 12px;
 }
-.pricing-card :deep(.compact-desc .el-descriptions__label) {
-  width: 90px;
+
+.info-table {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.info-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid #ebeef5;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row.header {
+  background: #f5f7fa;
+  font-size: 11px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.info-cell {
+  padding: 2px 6px;
+  border-right: 1px solid #ebeef5;
+  font-size: 12px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+
+.info-cell:last-child {
+  border-right: none;
+}
+
+.info-cell.readonly {
+  color: #303133;
+  font-weight: 500;
+  background: #fafafa;
+}
+
+/* 让输入组件占满单元格 */
+.info-cell :deep(.el-input),
+.info-cell :deep(.el-select),
+.info-cell :deep(.el-input-number) {
+  width: 100%;
+}
+
+/* ========== 商品名称 + SKU 行 ========== */
+.name-sku-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.name-sku-row .label {
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.name-sku-row .el-input,
+.name-sku-row .el-select {
+  flex: 1;
+}
+
+/* ========== 定价行表格 ========== */
+.pricing-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #dcdfe6;
+  border-radius: 3px;
+  margin-bottom: 6px;
+}
+
+.pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pricing-table th,
+.pricing-table td {
+  border: 1px solid #ebeef5;
+  padding: 3px 4px;
+  text-align: center;
+  white-space: nowrap;
+  min-width: 72px;
+}
+
+.pricing-table th {
+  background: #e7f0fe;
+  color: #303133;
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.pricing-table td {
+  color: #303133;
+}
+
+.pricing-table th.highlight,
+.pricing-table td.highlight {
+  background: #fff7d6;
+  font-weight: 600;
+}
+
+.pricing-table .platform-col {
+  background: #ede7f6;
+  color: #6b4ea0;
+  font-weight: 600;
+  min-width: 100px;
+}
+
+.pricing-table thead .platform-col {
+  background: #e7f0fe;
+  color: #303133;
+}
+
+/* 表格内输入框紧凑化 */
+.pricing-table :deep(.el-input),
+.pricing-table :deep(.el-input-number) {
+  width: 100%;
+}
+
+.pricing-card :deep(.el-input__wrapper) {
+  padding: 0 6px;
+  box-shadow: 0 0 0 1px transparent inset;
+}
+
+.pricing-card :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #c0c4cc inset;
+}
+
+.pricing-card :deep(.el-input-number.is-controls-right .el-input-number__increase),
+.pricing-card :deep(.el-input-number.is-controls-right .el-input-number__decrease) {
+  width: 16px;
+}
+
+.pricing-card :deep(.el-input-number.is-controls-right .el-input__inner) {
+  padding-right: 20px;
+}
+
+/* ========== 操作栏 ========== */
+.action-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>
