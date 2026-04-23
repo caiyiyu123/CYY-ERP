@@ -3,7 +3,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
       <el-input
         v-model="search"
-        placeholder="搜索 SKU 或方案名"
+        placeholder="搜索 SKU 或商品名称"
         style="width: 300px"
         clearable
         @clear="fetchItems"
