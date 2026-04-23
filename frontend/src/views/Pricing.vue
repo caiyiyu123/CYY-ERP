@@ -13,8 +13,8 @@
 
 <script setup>
 import { ref } from 'vue'
-import PricingListTab from '@/components/pricing/PricingListTab.vue'
-import ParamsTab from '@/components/pricing/ParamsTab.vue'
+import PricingListTab from '../components/pricing/PricingListTab.vue'
+import ParamsTab from '../components/pricing/ParamsTab.vue'
 
 const activeTab = ref('list')
 </script>
