@@ -4,7 +4,6 @@
       <!-- 左侧: 商品信息 -->
       <el-col :span="10">
         <div style="display: flex; gap: 12px; margin-bottom: 12px">
-          <el-input v-model="form.name" placeholder="方案名,例如 春季定价" style="flex: 1" />
           <el-select
             v-model="form.product_id"
             placeholder="搜索 SKU (可留空)"
@@ -23,6 +22,7 @@
               :value="p.id"
             />
           </el-select>
+          <el-input v-model="form.name" placeholder="商品名称" style="flex: 1" />
         </div>
 
         <div style="display: flex; gap: 12px; align-items: flex-start">
@@ -245,6 +245,7 @@ async function onProductChange(productId) {
   const p = productOptions.value.find(x => x.id === productId)
   if (p) {
     form.sku = p.sku || form.sku
+    form.name = p.name || form.name
     form.image_url = p.image || p.image_url || ''
     form.purchase_cost = p.purchase_price || 0
     form.weight_kg = p.weight || 0
