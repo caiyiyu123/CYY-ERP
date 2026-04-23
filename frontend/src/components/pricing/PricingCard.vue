@@ -1,15 +1,16 @@
 <template>
-  <el-card shadow="hover">
-    <el-row :gutter="16">
+  <el-card shadow="hover" class="pricing-card" :body-style="{ padding: '10px 12px' }">
+    <el-row :gutter="12">
       <!-- 左侧: 商品信息 -->
       <el-col :span="10">
-        <div style="display: flex; gap: 12px; margin-bottom: 12px">
+        <div style="display: flex; gap: 8px; margin-bottom: 6px">
           <el-select
             v-model="form.product_id"
             placeholder="搜索 SKU (可留空)"
             filterable
             remote
             clearable
+            size="small"
             :remote-method="searchProducts"
             :loading="productLoading"
             style="flex: 1"
@@ -22,60 +23,60 @@
               :value="p.id"
             />
           </el-select>
-          <el-input v-model="form.name" placeholder="商品名称" style="flex: 1" />
+          <el-input v-model="form.name" placeholder="商品名称" size="small" style="flex: 1" />
         </div>
 
-        <div style="display: flex; gap: 12px; align-items: flex-start">
+        <div style="display: flex; gap: 8px; align-items: flex-start">
           <!-- 图片 -->
-          <div style="width: 80px; height: 80px; border: 1px dashed #dcdfe6; display: flex; align-items: center; justify-content: center; overflow: hidden">
+          <div style="width: 60px; height: 60px; border: 1px dashed #dcdfe6; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0">
             <el-image
               v-if="form.image_url"
               :src="imgUrl(form.image_url)"
               fit="contain"
               style="width: 100%; height: 100%"
             />
-            <span v-else style="color: #ccc; font-size: 12px">无图</span>
+            <span v-else style="color: #ccc; font-size: 11px">无图</span>
           </div>
 
-          <el-form label-width="80px" label-position="top" style="flex: 1">
-            <el-row :gutter="8">
+          <el-form label-width="80px" label-position="top" size="small" style="flex: 1">
+            <el-row :gutter="6">
               <el-col :span="12">
                 <el-form-item label="采购成本 (¥)">
-                  <el-input-number v-model="form.purchase_cost" :precision="2" :step="1" :min="0" style="width: 100%" />
+                  <el-input-number v-model="form.purchase_cost" :precision="2" :step="1" :min="0" size="small" style="width: 100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
                 <el-form-item label="重量 (kg)">
-                  <el-input-number v-model="form.weight_kg" :precision="3" :step="0.1" :min="0" style="width: 100%" />
+                  <el-input-number v-model="form.weight_kg" :precision="3" :step="0.1" :min="0" size="small" style="width: 100%" />
                 </el-form-item>
               </el-col>
             </el-row>
-            <el-row :gutter="8">
+            <el-row :gutter="6">
               <el-col :span="8">
                 <el-form-item label="长 (cm)">
-                  <el-input-number v-model="form.length_cm" :precision="1" :step="1" :min="0" style="width: 100%" />
+                  <el-input-number v-model="form.length_cm" :precision="1" :step="1" :min="0" size="small" style="width: 100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item label="宽 (cm)">
-                  <el-input-number v-model="form.width_cm" :precision="1" :step="1" :min="0" style="width: 100%" />
+                  <el-input-number v-model="form.width_cm" :precision="1" :step="1" :min="0" size="small" style="width: 100%" />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item label="高 (cm)">
-                  <el-input-number v-model="form.height_cm" :precision="1" :step="1" :min="0" style="width: 100%" />
+                  <el-input-number v-model="form.height_cm" :precision="1" :step="1" :min="0" size="small" style="width: 100%" />
                 </el-form-item>
               </el-col>
             </el-row>
-            <div style="color: #909399; font-size: 13px; margin-top: 4px">
-              体积 {{ calc.volume != null ? calc.volume.toFixed(4) : '-' }} m³
-              | 密度 {{ calc.density != null ? calc.density.toFixed(2) : '-' }} kg/m³
-            </div>
           </el-form>
+        </div>
+        <div style="color: #909399; font-size: 12px; margin-top: 2px">
+          体积 {{ calc.volume != null ? calc.volume.toFixed(4) : '-' }} m³
+          | 密度 {{ calc.density != null ? calc.density.toFixed(2) : '-' }} kg/m³
         </div>
 
         <!-- 三个类目 -->
-        <el-form label-width="100px" style="margin-top: 12px">
+        <el-form label-width="90px" size="small" style="margin-top: 6px">
           <el-form-item label="WB 本土类目">
             <CommissionRateSelect v-model="form.wb_local_rate_id" platform="wb_local" />
           </el-form-item>
@@ -89,20 +90,20 @@
       </el-col>
 
       <el-col :span="14">
-        <div style="border-left: 1px solid #ebeef5; padding-left: 16px">
-          <div style="font-weight: 600; font-size: 14px; margin-bottom: 12px; color: #303133">
+        <div style="border-left: 1px solid #ebeef5; padding-left: 12px">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #303133">
             WB 跨境 FBS
           </div>
 
           <!-- 第 1 行: 定价双向 + 折扣 -->
-          <el-row :gutter="12">
+          <el-row :gutter="8">
             <el-col :span="8">
               <label style="font-size: 12px; color: #606266">定价 (RUB)</label>
               <el-input
                 :model-value="platform0.price_rub"
                 type="number"
                 step="1"
-                size="default"
+                size="small"
                 @input="onChangeRub"
               />
             </el-col>
@@ -112,7 +113,7 @@
                 :model-value="platform0.price_rmb"
                 type="number"
                 step="0.1"
-                size="default"
+                size="small"
                 @input="onChangeRmb"
               />
             </el-col>
@@ -121,13 +122,14 @@
               <el-input-number
                 v-model="platform0.discount_pct"
                 :precision="1" :step="1" :min="0" :max="100"
+                size="small"
                 style="width: 100%"
               />
             </el-col>
           </el-row>
 
           <!-- 第 2 行: 派生字段 -->
-          <el-descriptions :column="2" border size="small" style="margin-top: 12px">
+          <el-descriptions :column="2" border size="small" class="compact-desc" style="margin-top: 8px">
             <el-descriptions-item label="前台售价 (RUB)">
               {{ fmt(calc.frontPriceRub, 2) }}
             </el-descriptions-item>
@@ -155,16 +157,16 @@
           </el-descriptions>
 
           <!-- 利润汇总 -->
-          <div style="margin-top: 12px; padding: 10px; background: #f5f7fa; border-radius: 4px; display: flex; justify-content: space-around">
+          <div style="margin-top: 8px; padding: 6px 10px; background: #f5f7fa; border-radius: 4px; display: flex; justify-content: space-around">
             <div>
-              <div style="font-size: 12px; color: #909399">利润 (¥)</div>
-              <div style="font-size: 18px; font-weight: 600" :style="{ color: profitColor }">
+              <div style="font-size: 11px; color: #909399">利润 (¥)</div>
+              <div style="font-size: 16px; font-weight: 600; line-height: 1.2" :style="{ color: profitColor }">
                 {{ fmt(calc.profit, 2) }}
               </div>
             </div>
             <div>
-              <div style="font-size: 12px; color: #909399">利润率</div>
-              <div style="font-size: 18px; font-weight: 600" :style="{ color: profitColor }">
+              <div style="font-size: 11px; color: #909399">利润率</div>
+              <div style="font-size: 16px; font-weight: 600; line-height: 1.2" :style="{ color: profitColor }">
                 {{ calc.profitRatePct != null ? calc.profitRatePct.toFixed(1) + '%' : '-' }}
               </div>
             </div>
@@ -174,14 +176,14 @@
     </el-row>
 
     <!-- 操作栏 -->
-    <div style="margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px">
-      <el-button v-if="isDraft" @click="$emit('cancel')">取消</el-button>
+    <div style="margin-top: 6px; display: flex; justify-content: flex-end; gap: 8px">
+      <el-button v-if="isDraft" size="small" @click="$emit('cancel')">取消</el-button>
       <el-popconfirm v-if="!isDraft" title="确定删除此方案?" @confirm="remove">
         <template #reference>
-          <el-button type="danger" link>删除</el-button>
+          <el-button size="small" type="danger" link>删除</el-button>
         </template>
       </el-popconfirm>
-      <el-button type="primary" :loading="saving" @click="save">{{ isDraft ? '保存' : '更新' }}</el-button>
+      <el-button type="primary" size="small" :loading="saving" @click="save">{{ isDraft ? '保存' : '更新' }}</el-button>
     </div>
   </el-card>
 </template>
@@ -326,3 +328,21 @@ const profitColor = computed(() => {
   return p >= 0 ? '#67c23a' : '#f56c6c'
 })
 </script>
+
+<style scoped>
+.pricing-card :deep(.el-form-item) {
+  margin-bottom: 4px;
+}
+.pricing-card :deep(.el-form-item__label) {
+  padding-bottom: 0;
+  line-height: 22px;
+  font-size: 12px;
+}
+.pricing-card :deep(.compact-desc .el-descriptions__cell) {
+  padding: 4px 8px !important;
+  font-size: 12px;
+}
+.pricing-card :deep(.compact-desc .el-descriptions__label) {
+  width: 90px;
+}
+</style>

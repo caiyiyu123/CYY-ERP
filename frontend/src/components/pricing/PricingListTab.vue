@@ -14,7 +14,7 @@
 
     <el-empty v-if="!loading && items.length === 0 && !hasDraft" description="暂无定价方案,点右上角新增" />
 
-    <div v-loading="loading" style="display: flex; flex-direction: column; gap: 16px">
+    <div v-loading="loading" style="display: flex; flex-direction: column; gap: 8px">
       <PricingCard
         v-for="it in items"
         :key="it.id"
