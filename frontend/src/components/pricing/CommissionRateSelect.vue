@@ -20,7 +20,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import api from '../../api'
 
 const props = defineProps({
@@ -32,14 +32,38 @@ defineEmits(['update:modelValue'])
 const options = ref([])
 const loading = ref(false)
 
+// 初始 fetch: 如果外部传入了 modelValue, 主动取出对应 rate 以显示 label
+// 否则刷新后 options 为空, el-select 会直接展示原始数字 id
+async function ensureInitialOption(id) {
+  if (!id) return
+  if (options.value.some(r => r.id === id)) return
+  try {
+    const { data } = await api.get(`/api/pricing/rate/${id}`)
+    options.value = [data, ...options.value]
+  } catch { /* ignore */ }
+}
+
+watch(() => props.modelValue, (id) => ensureInitialOption(id), { immediate: true })
+
 async function search(query) {
-  if (!query) { options.value = []; return }
+  if (!query) {
+    // 清空输入时保留当前选中项,避免 label 丢失
+    const current = options.value.find(r => r.id === props.modelValue)
+    options.value = current ? [current] : []
+    return
+  }
   loading.value = true
   try {
     const { data } = await api.get('/api/commission/rates', {
       params: { platform: props.platform, product: query, page: 1, page_size: 30 },
     })
-    options.value = data.rates || []
+    const fetched = data.rates || []
+    const currentRate = options.value.find(r => r.id === props.modelValue)
+    if (currentRate && !fetched.some(r => r.id === currentRate.id)) {
+      options.value = [currentRate, ...fetched]
+    } else {
+      options.value = fetched
+    }
   } catch { options.value = [] } finally { loading.value = false }
 }
 </script>

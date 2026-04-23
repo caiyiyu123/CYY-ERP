@@ -169,14 +169,37 @@ async function loadAllProducts() {
 }
 
 async function searchProducts(query) {
-  if (!query) { productOptions.value = []; return }
+  if (!query) {
+    // 清空输入时保留当前选中项,避免 label 丢失
+    const current = productOptions.value.find(p => p.id === form.product_id)
+    productOptions.value = current ? [current] : []
+    return
+  }
   await loadAllProducts()
   const q = query.toLowerCase()
-  productOptions.value = allProducts.value.filter(p =>
+  const matched = allProducts.value.filter(p =>
     (p.sku || '').toLowerCase().includes(q) ||
     (p.name || '').toLowerCase().includes(q)
   ).slice(0, 20)
+  const currentProduct = productOptions.value.find(p => p.id === form.product_id)
+  if (currentProduct && !matched.some(p => p.id === currentProduct.id)) {
+    productOptions.value = [currentProduct, ...matched]
+  } else {
+    productOptions.value = matched
+  }
 }
+
+// 初始化: 如果 item 带有 product_id, 主动 fetch 对应 product 填入 options
+// 否则刷新后 el-select 只显示原始数字 id
+async function ensureInitialProduct(id) {
+  if (!id) return
+  if (productOptions.value.some(p => p.id === id)) return
+  await loadAllProducts()
+  const p = allProducts.value.find(x => x.id === id)
+  if (p) productOptions.value = [p, ...productOptions.value]
+}
+
+watch(() => form.product_id, (id) => ensureInitialProduct(id), { immediate: true })
 
 async function onProductChange(productId) {
   if (!productId) return
