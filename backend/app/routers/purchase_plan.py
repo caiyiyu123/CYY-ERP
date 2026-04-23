@@ -141,7 +141,7 @@ def delete_plan(
     return {"detail": "Plan deleted"}
 
 
-VALID_STATUSES = {"pending", "purchased", "arrived"}
+VALID_STATUSES = {"pending", "purchased", "domestic", "shipping", "arrived"}
 
 
 @router.put("/{plan_id}/status")

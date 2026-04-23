@@ -7,6 +7,8 @@
           <el-select v-model="filterStatus" placeholder="全部状态" clearable style="width: 130px" @change="fetchPlans">
             <el-option label="待采购" value="pending" />
             <el-option label="已采购" value="purchased" />
+            <el-option label="国内仓" value="domestic" />
+            <el-option label="运输中" value="shipping" />
             <el-option label="已到货" value="arrived" />
           </el-select>
         </div>
@@ -52,6 +54,12 @@
                 </el-dropdown-item>
                 <el-dropdown-item command="purchased" :disabled="row.status === 'purchased'">
                   <el-tag type="primary" size="large" style="font-size: 15px; padding: 4px 20px">已采购</el-tag>
+                </el-dropdown-item>
+                <el-dropdown-item command="domestic" :disabled="row.status === 'domestic'">
+                  <el-tag type="info" size="large" style="font-size: 15px; padding: 4px 20px">国内仓</el-tag>
+                </el-dropdown-item>
+                <el-dropdown-item command="shipping" :disabled="row.status === 'shipping'">
+                  <el-tag type="danger" size="large" style="font-size: 15px; padding: 4px 20px">运输中</el-tag>
                 </el-dropdown-item>
                 <el-dropdown-item command="arrived" :disabled="row.status === 'arrived'">
                   <el-tag type="success" size="large" style="font-size: 15px; padding: 4px 20px">已到货</el-tag>
@@ -184,8 +192,8 @@ const form = reactive({
   items: [],
 })
 
-const STATUS_MAP = { pending: '待采购', purchased: '已采购', arrived: '已到货' }
-const STATUS_TYPE = { pending: 'warning', purchased: 'primary', arrived: 'success' }
+const STATUS_MAP = { pending: '待采购', purchased: '已采购', domestic: '国内仓', shipping: '运输中', arrived: '已到货' }
+const STATUS_TYPE = { pending: 'warning', purchased: 'primary', domestic: 'info', shipping: 'danger', arrived: 'success' }
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TYPE[s] || 'info' }
 
