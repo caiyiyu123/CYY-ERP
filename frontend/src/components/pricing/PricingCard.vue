@@ -40,11 +40,11 @@
           <div class="info-cell">高 (cm)</div>
         </div>
         <div class="info-row">
-          <div class="info-cell"><el-input-number v-model="form.purchase_cost" :precision="2" :step="1" :min="0" size="small" controls-position="right" /></div>
-          <div class="info-cell"><el-input-number v-model="form.weight_kg" :precision="3" :step="0.1" :min="0" size="small" controls-position="right" /></div>
-          <div class="info-cell"><el-input-number v-model="form.length_cm" :precision="1" :step="1" :min="0" size="small" controls-position="right" /></div>
-          <div class="info-cell"><el-input-number v-model="form.width_cm" :precision="1" :step="1" :min="0" size="small" controls-position="right" /></div>
-          <div class="info-cell"><el-input-number v-model="form.height_cm" :precision="1" :step="1" :min="0" size="small" controls-position="right" /></div>
+          <div class="info-cell"><el-input-number v-model="form.purchase_cost" :precision="2" :step="1" :min="0" size="small" :controls="false" /></div>
+          <div class="info-cell"><el-input-number v-model="form.weight_kg" :precision="3" :step="0.1" :min="0" size="small" :controls="false" /></div>
+          <div class="info-cell"><el-input-number v-model="form.length_cm" :precision="1" :step="1" :min="0" size="small" :controls="false" /></div>
+          <div class="info-cell"><el-input-number v-model="form.width_cm" :precision="1" :step="1" :min="0" size="small" :controls="false" /></div>
+          <div class="info-cell"><el-input-number v-model="form.height_cm" :precision="1" :step="1" :min="0" size="small" :controls="false" /></div>
         </div>
       </div>
     </div>
@@ -98,7 +98,7 @@
             <td class="platform-col">WB 跨境 FBS</td>
             <td><el-input :model-value="platform0.price_rub" type="number" size="small" @input="onChangeRub" /></td>
             <td><el-input :model-value="platform0.price_rmb" type="number" size="small" @input="onChangeRmb" /></td>
-            <td><el-input-number v-model="platform0.discount_pct" :precision="1" :step="1" :min="0" :max="100" size="small" controls-position="right" /></td>
+            <td><el-input-number v-model="platform0.discount_pct" :precision="1" :step="1" :min="0" :max="100" size="small" :controls="false" /></td>
             <td class="highlight">{{ fmt(calc.frontPriceRub, 2) }}</td>
             <td :style="{ color: profitColor, fontWeight: 600 }">{{ fmt(calc.profit, 2) }}</td>
             <td :style="{ color: profitColor, fontWeight: 600 }">{{ calc.profitRatePct != null ? calc.profitRatePct.toFixed(1) + '%' : '-' }}</td>
@@ -346,10 +346,10 @@ const profitColor = computed(() => {
 }
 
 .info-cell {
-  padding: 2px 6px;
+  padding: 1px 4px;
   border-right: 1px solid #ebeef5;
   font-size: 12px;
-  min-height: 28px;
+  min-height: 24px;
   display: flex;
   align-items: center;
 }
@@ -459,13 +459,21 @@ const profitColor = computed(() => {
   box-shadow: 0 0 0 1px #c0c4cc inset;
 }
 
-.pricing-card :deep(.el-input-number.is-controls-right .el-input-number__increase),
-.pricing-card :deep(.el-input-number.is-controls-right .el-input-number__decrease) {
-  width: 16px;
+/* 取消 el-input-number 的加减按钮后让输入居中对齐 */
+.pricing-card :deep(.el-input-number .el-input__inner) {
+  text-align: center;
+  padding: 0 4px;
 }
 
-.pricing-card :deep(.el-input-number.is-controls-right .el-input__inner) {
-  padding-right: 20px;
+/* 整体输入框缩小高度 */
+.pricing-card :deep(.el-input--small),
+.pricing-card :deep(.el-input-number--small),
+.pricing-card :deep(.el-select--small .el-input) {
+  --el-component-size: 24px;
+}
+.pricing-card :deep(.el-input--small .el-input__wrapper),
+.pricing-card :deep(.el-input-number--small .el-input__wrapper) {
+  min-height: 24px;
 }
 
 /* ========== 操作栏 ========== */
