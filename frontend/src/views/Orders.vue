@@ -59,6 +59,9 @@
           <span v-else style="font-size: 12px">{{ row.srid || row.wb_order_id || '-' }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="店铺" min-width="120">
+        <template #default="{ row }">{{ shopName(row.shop_id) }}</template>
+      </el-table-column>
       <el-table-column label="产品SKU" min-width="130">
         <template #default="{ row }">
           <span v-if="row.items && row.items.length">{{ row.items[0].sku }}</span>
@@ -172,6 +175,11 @@ function onDateRangeChange(val) {
 function onSearch() {
   page.value = 1
   fetchOrders()
+}
+
+function shopName(shopId) {
+  const shop = shops.value.find((s) => s.id === shopId)
+  return shop?.name || (shopId ? `店铺${shopId}` : '-')
 }
 
 const STATUS_MAP = {
