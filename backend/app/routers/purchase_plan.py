@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -6,9 +7,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.purchase_plan import PurchasePlan, PurchasePlanItem
 from app.models.product import Product
+from app.models.setting import SystemSetting
 from app.utils.deps import require_module
 
 router = APIRouter(prefix="/api/purchase-plans", tags=["purchase-plans"])
+
+FIRST_LEG_PROVIDERS_KEY = "purchase_plan_first_leg_providers"
 
 
 class PlanItemIn(BaseModel):
@@ -36,6 +40,50 @@ class StatusUpdate(BaseModel):
     status: str
 
 
+class FirstLegUpdate(BaseModel):
+    first_leg_provider: str = ""
+
+
+class FirstLegProviderIn(BaseModel):
+    name: str
+
+
+def _load_first_leg_providers(db: Session) -> list[str]:
+    setting = db.query(SystemSetting).filter(SystemSetting.key == FIRST_LEG_PROVIDERS_KEY).first()
+    if setting:
+        try:
+            data = json.loads(setting.value or "[]")
+            if isinstance(data, list):
+                return [str(v).strip() for v in data if str(v).strip()]
+        except Exception:
+            return []
+
+    providers = [
+        row[0].strip()
+        for row in db.query(PurchasePlan.first_leg_provider).distinct().all()
+        if row[0] and row[0].strip()
+    ]
+    _save_first_leg_providers(db, providers)
+    return providers
+
+
+def _save_first_leg_providers(db: Session, providers: list[str]) -> None:
+    clean = []
+    seen = set()
+    for provider in providers:
+        name = provider.strip()
+        if name and name not in seen:
+            seen.add(name)
+            clean.append(name)
+    value = json.dumps(clean, ensure_ascii=False)
+    setting = db.query(SystemSetting).filter(SystemSetting.key == FIRST_LEG_PROVIDERS_KEY).first()
+    if setting:
+        setting.value = value
+    else:
+        db.add(SystemSetting(key=FIRST_LEG_PROVIDERS_KEY, value=value))
+    db.commit()
+
+
 def _plan_to_dict(plan: PurchasePlan) -> dict:
     return {
         "id": plan.id,
@@ -43,6 +91,7 @@ def _plan_to_dict(plan: PurchasePlan) -> dict:
         "purchase_date": plan.purchase_date.isoformat(),
         "express_fee": plan.express_fee,
         "status": plan.status,
+        "first_leg_provider": plan.first_leg_provider,
         "created_at": plan.created_at.isoformat(),
         "updated_at": plan.updated_at.isoformat(),
         "items": [
@@ -59,6 +108,42 @@ def _plan_to_dict(plan: PurchasePlan) -> dict:
             for item in plan.items
         ],
     }
+
+
+@router.get("/first-leg/providers")
+def list_first_leg_providers(
+    db: Session = Depends(get_db),
+    _=Depends(require_module("purchase_plan")),
+):
+    return {"items": _load_first_leg_providers(db)}
+
+
+@router.post("/first-leg/providers")
+def add_first_leg_provider(
+    data: FirstLegProviderIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_module("purchase_plan")),
+):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Provider name is required")
+    providers = _load_first_leg_providers(db)
+    if name not in providers:
+        providers.append(name)
+        _save_first_leg_providers(db, providers)
+    return {"items": providers}
+
+
+@router.delete("/first-leg/providers")
+def delete_first_leg_provider(
+    data: FirstLegProviderIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_module("purchase_plan")),
+):
+    name = data.name.strip()
+    providers = [provider for provider in _load_first_leg_providers(db) if provider != name]
+    _save_first_leg_providers(db, providers)
+    return {"items": providers}
 
 
 @router.get("")
@@ -159,3 +244,23 @@ def update_plan_status(
     plan.status = data.status
     db.commit()
     return {"detail": "Status updated", "status": plan.status}
+
+
+@router.put("/{plan_id}/first-leg")
+def update_plan_first_leg(
+    plan_id: int,
+    data: FirstLegUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_module("purchase_plan")),
+):
+    plan = db.query(PurchasePlan).filter(PurchasePlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    plan.first_leg_provider = data.first_leg_provider.strip()
+    if plan.first_leg_provider:
+        providers = _load_first_leg_providers(db)
+        if plan.first_leg_provider not in providers:
+            providers.append(plan.first_leg_provider)
+            _save_first_leg_providers(db, providers)
+    db.commit()
+    return {"detail": "First leg updated", "first_leg_provider": plan.first_leg_provider}

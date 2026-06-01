@@ -15,6 +15,7 @@ class PurchasePlan(Base):
     purchase_date: Mapped[date] = mapped_column(Date)
     express_fee: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    first_leg_provider: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
     items: Mapped[list["PurchasePlanItem"]] = relationship(

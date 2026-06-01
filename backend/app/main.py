@@ -116,6 +116,12 @@ try:
             if "price_rub" not in sp_cols:
                 conn.execute(text("ALTER TABLE shop_products ADD COLUMN price_rub FLOAT DEFAULT 0.0"))
             conn.commit()
+        if "purchase_plans" in inspector.get_table_names():
+            purchase_plan_cols = {c["name"] for c in inspector.get_columns("purchase_plans")}
+            if "first_leg_provider" not in purchase_plan_cols:
+                conn.execute(text("ALTER TABLE purchase_plans ADD COLUMN first_leg_provider VARCHAR(100) DEFAULT ''"))
+                conn.commit()
+                print("[Migration] Added first_leg_provider column to purchase_plans")
         # Migrate products.image from VARCHAR to TEXT for base64 storage
         if "products" in inspector.get_table_names():
             prod_cols = {c["name"]: c for c in inspector.get_columns("products")}

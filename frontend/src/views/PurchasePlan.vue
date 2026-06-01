@@ -69,6 +69,51 @@
           </el-dropdown>
         </template>
       </el-table-column>
+      <el-table-column label="头程" width="130" align="center">
+        <template #default="{ row }">
+          <div style="display: flex; align-items: center; gap: 6px">
+            <el-select
+              class="first-leg-select"
+              :model-value="row.first_leg_provider"
+              placeholder="选择头程"
+              clearable
+              size="small"
+              style="width: 104px"
+              @change="value => changeFirstLeg(row._planId, value)"
+            >
+              <template #header>
+                <div style="display: flex; gap: 6px; padding: 4px 0" @click.stop>
+                  <el-input
+                    v-model="firstLegInput"
+                    placeholder="输入头程物流商名称"
+                    size="small"
+                    @keyup.enter.stop="addFirstLegProvider"
+                  />
+                  <el-button type="primary" size="small" @click.stop="addFirstLegProvider">添加</el-button>
+                </div>
+              </template>
+              <el-option
+                v-for="provider in firstLegProviders"
+                :key="provider"
+                :label="provider"
+                :value="provider"
+              >
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%">
+                  <span style="overflow: hidden; text-overflow: ellipsis; font-weight: 600">{{ provider }}</span>
+                  <el-button
+                    link
+                    type="danger"
+                    size="small"
+                    style="font-size: 16px; padding: 0 4px"
+                    @mousedown.stop.prevent
+                    @click.stop.prevent="deleteFirstLegProvider(provider)"
+                  >-</el-button>
+                </div>
+              </el-option>
+            </el-select>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="160" align="center">
         <template #default="{ row }">
           <el-button size="small" link @click="openDialog(row._plan)">编辑</el-button>
@@ -183,6 +228,8 @@ const showDialog = ref(false)
 const userNames = ref([])
 const allProducts = ref([])
 const selectedProduct = ref(null)
+const firstLegProviders = ref([])
+const firstLegInput = ref('')
 
 const form = reactive({
   id: null,
@@ -202,8 +249,8 @@ function calcTotal(plan) {
   return (itemsTotal + (plan.express_fee || 0)).toFixed(1)
 }
 
-// 合并列索引：采购员(0), 采购日期(1), 快递费用(8), 采购总金额(9), 状态(10), 操作(11)
-const MERGE_COLS = new Set([0, 1, 8, 9, 10, 11])
+// 合并列索引：采购员(0), 采购日期(1), 快递费用(8), 采购总金额(9), 状态(10), 头程(11), 操作(12)
+const MERGE_COLS = new Set([0, 1, 8, 9, 10, 11, 12])
 
 const flatRows = computed(() => {
   const rows = []
@@ -221,6 +268,7 @@ const flatRows = computed(() => {
         purchase_date: plan.purchase_date,
         express_fee: plan.express_fee,
         status: plan.status,
+        first_leg_provider: plan.first_leg_provider || '',
         product_image: item.product_image || '',
         product_sku: item.product_sku || '',
         product_name: item.product_name || '',
@@ -371,10 +419,74 @@ async function changeStatus(id, status) {
   }
 }
 
+async function fetchFirstLegProviders() {
+  try {
+    const { data } = await api.get('/api/purchase-plans/first-leg/providers')
+    firstLegProviders.value = data.items || []
+  } catch { /* ignore */ }
+}
+
+async function changeFirstLeg(id, provider) {
+  try {
+    await api.put(`/api/purchase-plans/${id}/first-leg`, { first_leg_provider: provider || '' })
+    fetchPlans()
+    fetchFirstLegProviders()
+    ElMessage.success('头程已更新')
+  } catch {
+    ElMessage.error('头程更新失败')
+  }
+}
+
+async function addFirstLegProvider() {
+  const name = firstLegInput.value.trim()
+  if (!name) {
+    ElMessage.warning('请输入头程物流商名称')
+    return
+  }
+  try {
+    const { data } = await api.post('/api/purchase-plans/first-leg/providers', { name })
+    firstLegProviders.value = data.items || []
+    firstLegInput.value = ''
+    ElMessage.success('已添加头程物流商')
+  } catch {
+    ElMessage.error('添加失败')
+  }
+}
+
+async function deleteFirstLegProvider(provider) {
+  try {
+    const { data } = await api.delete('/api/purchase-plans/first-leg/providers', { data: { name: provider } })
+    firstLegProviders.value = data.items || []
+    ElMessage.success('已删除头程物流商')
+  } catch {
+    ElMessage.error('删除失败')
+  }
+}
+
 onMounted(() => {
   fetchPlans()
   fetchUserNames()
   fetchProducts()
+  fetchFirstLegProviders()
 })
 </script>
 
+<style scoped>
+.first-leg-select :deep(.el-select__selected-item) {
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 24px;
+  text-align: center;
+}
+
+.first-leg-select :deep(.el-select__selected-item span) {
+  width: 100%;
+  text-align: center;
+}
+
+.first-leg-select :deep(.el-select__placeholder) {
+  justify-content: center;
+  text-align: center;
+}
+</style>
