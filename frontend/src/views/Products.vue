@@ -1,12 +1,21 @@
 <template>
   <el-card>
     <template #header>
-      <div style="display: flex; justify-content: space-between; align-items: center">
-        <span>商品管理</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span>商品管理</span>
+          <el-input
+            v-model="searchKeyword"
+            placeholder="搜索SKU / 商品名称"
+            clearable
+            :prefix-icon="Search"
+            style="width: 260px"
+          />
+        </div>
         <el-button type="primary" @click="openDialog()">添加商品</el-button>
       </div>
     </template>
-    <el-table :data="products" stripe>
+    <el-table :data="filteredProducts" stripe>
       <el-table-column prop="developer" label="开发员" width="90" />
       <el-table-column label="图片" width="80" align="center">
         <template #default="{ row }">
@@ -89,13 +98,25 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import api, { imageUrl } from '../api'
 import ImageUploader from '../components/ImageUploader.vue'
 
 const products = ref([])
+const searchKeyword = ref('')
 const userNames = ref([])
 const shippingRates = ref([])
 const usdToCny = ref(0)
+
+const filteredProducts = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) return products.value
+  return products.value.filter(product => {
+    const sku = String(product.sku || '').toLowerCase()
+    const name = String(product.name || '').toLowerCase()
+    return sku.includes(keyword) || name.includes(keyword)
+  })
+})
 
 function calcDensity(row) {
   const volume = (row.length || 0) * (row.width || 0) * (row.height || 0)
