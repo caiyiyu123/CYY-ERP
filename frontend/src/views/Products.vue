@@ -32,6 +32,9 @@
       <el-table-column prop="length" label="长(cm)" align="center" min-width="70" />
       <el-table-column prop="width" label="宽(cm)" align="center" min-width="70" />
       <el-table-column prop="height" label="高(cm)" align="center" min-width="70" />
+      <el-table-column label="体积(m³)" align="center" min-width="90">
+        <template #default="{ row }">{{ calcVolume(row) }}</template>
+      </el-table-column>
       <el-table-column label="密度" align="center" min-width="80">
         <template #default="{ row }">{{ calcDensity(row) }}</template>
       </el-table-column>
@@ -122,6 +125,12 @@ function calcDensity(row) {
   const volume = (row.length || 0) * (row.width || 0) * (row.height || 0)
   if (!volume || !row.weight) return '-'
   return Math.round(row.weight * 1000000 / volume)
+}
+
+function calcVolume(row) {
+  const volume = (row.length || 0) * (row.width || 0) * (row.height || 0) / 1000000
+  if (!volume) return '-'
+  return parseFloat(volume.toFixed(6))
 }
 
 function calcEstimatedShipping(row) {
