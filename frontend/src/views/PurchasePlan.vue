@@ -20,7 +20,14 @@
       <el-table-column prop="purchase_date" label="采购日期" width="120" />
       <el-table-column label="商品图片" width="80" align="center">
         <template #default="{ row }">
-          <el-image v-if="row.product_image" :src="imageUrl(row.product_image)" style="width: 40px; height: 40px" fit="contain" />
+          <el-image
+            v-if="row.product_image"
+            :src="imageUrl(row.product_image)"
+            style="width: 40px; height: 40px; display: block; cursor: pointer"
+            fit="contain"
+            :preview-src-list="[imageUrl(row.product_image)]"
+            preview-teleported
+          />
           <span v-else style="color: #ccc">无图</span>
         </template>
       </el-table-column>
@@ -162,7 +169,14 @@
       <el-table :data="form.items" style="margin-bottom: 16px">
         <el-table-column label="图片" width="70" align="center">
           <template #default="{ row }">
-            <el-image v-if="row.product_image" :src="imageUrl(row.product_image)" style="width: 40px; height: 40px" fit="contain" />
+            <el-image
+              v-if="row.product_image"
+              :src="imageUrl(row.product_image)"
+              style="width: 40px; height: 40px; display: block; cursor: pointer"
+              fit="contain"
+              :preview-src-list="[imageUrl(row.product_image)]"
+              preview-teleported
+            />
             <span v-else style="color: #ccc">无图</span>
           </template>
         </el-table-column>
