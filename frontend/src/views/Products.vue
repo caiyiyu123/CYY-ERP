@@ -24,7 +24,7 @@
         </template>
       </el-table-column>
       <el-table-column prop="sku" label="商品SKU" min-width="130" />
-      <el-table-column prop="name" label="名称" min-width="150" />
+      <el-table-column prop="name" label="商品名称" min-width="130" />
       <el-table-column prop="purchase_price" label="采购价" align="center" min-width="90">
         <template #default="{ row }">¥ {{ parseFloat(Number(row.purchase_price).toFixed(2)) }}</template>
       </el-table-column>
